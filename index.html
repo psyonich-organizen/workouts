@@ -1,0 +1,1053 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Workouts</title>
+<meta name="theme-color" content="#14866a">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  :root {
+    --bg: #f4f6f5;
+    --surface: #ffffff;
+    --surface-2: #eef1f0;
+    --text: #17201d;
+    --muted: #64706b;
+    --line: #dde3e0;
+    --accent: #14866a;
+    --accent-soft: #d8efe7;
+    --accent-text: #ffffff;
+    --warn: #c98a12;
+    --miss: #c4554d;
+    --radius: 14px;
+    --shadow: 0 1px 2px rgba(0,0,0,.05), 0 2px 8px rgba(0,0,0,.04);
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #101513;
+      --surface: #18201d;
+      --surface-2: #212b27;
+      --text: #e8eeeb;
+      --muted: #93a19b;
+      --line: #2c3833;
+      --accent: #35b48f;
+      --accent-soft: #1d3a31;
+      --accent-text: #08130f;
+      --warn: #e0a83a;
+      --miss: #e07a72;
+      --shadow: none;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); }
+  body {
+    font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+  }
+  button, input, select { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  button:disabled { cursor: default; }
+  #app { max-width: 560px; margin: 0 auto; min-height: 100vh; }
+  .view { padding: 12px 16px calc(96px + env(safe-area-inset-bottom)); }
+
+  /* Header */
+  .top { display: flex; align-items: center; gap: 8px; padding: 8px 0 12px; }
+  .top .title { flex: 1; text-align: center; }
+  .top .big { font-size: 1.35rem; font-weight: 700; letter-spacing: -.01em; }
+  .top .sub { color: var(--muted); font-size: .9rem; }
+  .icon-btn {
+    width: 44px; height: 44px; border-radius: 50%; border: 0;
+    background: var(--surface); box-shadow: var(--shadow);
+    font-size: 1.4rem; line-height: 1; display: grid; place-items: center;
+  }
+  .icon-btn:active { transform: scale(.96); }
+  h1.page { font-size: 1.35rem; margin: 8px 0 14px; }
+
+  .link-btn { border: 0; background: none; color: var(--accent); font-weight: 600; padding: 6px 0; }
+  .center { text-align: center; }
+
+  /* Day progress */
+  .progress { height: 8px; background: var(--surface-2); border-radius: 99px; overflow: hidden; margin: 0 0 16px; }
+  .progress > span { display: block; height: 100%; background: var(--accent); border-radius: 99px; transition: width .25s; }
+
+  /* Cards */
+  .card {
+    background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow);
+    padding: 14px 6px 4px 14px; margin-bottom: 14px;
+  }
+  .card.complete { outline: 2px solid var(--accent-soft); }
+  .card-head { display: flex; align-items: center; gap: 8px; margin: 0 8px 4px 0; }
+  .card-head h2 { flex: 1; font-size: 1.05rem; margin: 0; }
+  .pill { font-size: .8rem; font-weight: 600; padding: 3px 9px; border-radius: 99px; background: var(--surface-2); color: var(--muted); white-space: nowrap; }
+  .complete .pill { background: var(--accent-soft); color: var(--accent); }
+
+  /* Exercise rows */
+  .checklist { list-style: none; margin: 0; padding: 0; }
+  .ex { display: flex; align-items: flex-start; gap: 4px; border-top: 1px solid var(--line); }
+  .checklist .ex:first-child { border-top: 0; }
+  .ex-main { flex: 1; min-width: 0; padding: 12px 2px; }
+  .check-row {
+    flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; text-align: left;
+    border: 0; background: none; padding: 12px 2px;
+  }
+  .box {
+    flex: none; width: 28px; height: 28px; border-radius: 8px; border: 2px solid var(--line);
+    display: grid; place-items: center; transition: background .15s, border-color .15s;
+  }
+  .done .box { background: var(--accent); border-color: var(--accent); }
+  .done .box::after {
+    content: ""; width: 7px; height: 13px; border: solid var(--accent-text);
+    border-width: 0 3px 3px 0; transform: translateY(-1px) rotate(45deg);
+  }
+  .txt { display: flex; flex-direction: column; min-width: 0; }
+  .name { font-weight: 600; }
+  .details { color: var(--muted); font-size: .9rem; }
+  .details .changed { color: var(--warn); }
+  .ex.done .name { color: var(--muted); text-decoration: line-through; text-decoration-thickness: 1.5px; }
+  .sets { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .set {
+    width: 44px; height: 44px; border-radius: 12px; border: 2px solid var(--line); background: none;
+    font-weight: 700; color: var(--muted); transition: background .15s, border-color .15s;
+  }
+  .set.on { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+  .set:active { transform: scale(.95); }
+  .more {
+    flex: none; width: 44px; height: 48px; border: 0; background: none; color: var(--muted);
+    font-size: 1.3rem; letter-spacing: 1px; margin-top: 2px;
+  }
+
+  .removed { margin-top: 6px; }
+  .removed-row { display: flex; align-items: center; justify-content: space-between; color: var(--muted); padding: 4px 2px; }
+  .removed-row span { text-decoration: line-through; }
+  .add-day { display: flex; gap: 18px; justify-content: center; margin-top: 4px; }
+
+  .empty { text-align: center; color: var(--muted); padding: 40px 12px; }
+  .empty .big { font-size: 1.1rem; color: var(--text); font-weight: 600; margin-bottom: 4px; }
+  .empty .actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 18px; }
+
+  /* Buttons */
+  .btn {
+    border: 0; border-radius: 12px; padding: 12px 18px; font-weight: 600;
+    background: var(--accent); color: var(--accent-text);
+  }
+  .btn.secondary { background: var(--surface-2); color: var(--text); }
+  .btn.danger { background: none; color: var(--miss); padding-left: 0; }
+  .btn.block { width: 100%; }
+  .btn:disabled { opacity: .6; }
+  .btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+
+  /* Calendar */
+  .cal { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); padding: 10px; }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+  .cal-dow { text-align: center; font-size: .75rem; color: var(--muted); font-weight: 600; padding: 4px 0 6px; }
+  .cal-day {
+    aspect-ratio: 1 / 1.05; border: 0; background: none; border-radius: 10px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+    font-size: .95rem;
+  }
+  .cal-day.other { color: var(--muted); opacity: .45; }
+  .cal-day.today .num { background: var(--accent); color: var(--accent-text); }
+  .cal-day.selected { background: var(--surface-2); }
+  .cal-day .num { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-weight: 600; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; }
+  .st-done .dot { background: var(--accent); }
+  .st-partial .dot { background: var(--warn); }
+  .st-missed .dot { background: var(--miss); opacity: .8; }
+  .st-planned .dot { border: 1.5px solid var(--muted); }
+  .st-none .dot { visibility: hidden; }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; color: var(--muted); font-size: .8rem; margin-top: 12px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+
+  /* Plans list */
+  .plan-item {
+    width: 100%; text-align: left; border: 0; display: block;
+    background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow);
+    padding: 14px; margin-bottom: 10px;
+  }
+  .plan-item .t { font-weight: 650; font-size: 1.02rem; }
+  .plan-item .s { color: var(--muted); font-size: .9rem; margin-top: 2px; }
+  .plan-item.past { opacity: .6; }
+  .section-label { color: var(--muted); font-size: .8rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; margin: 22px 0 8px; }
+  .account { color: var(--muted); font-size: .85rem; text-align: center; margin-top: 28px; }
+
+  /* Tab bar */
+  .tabs {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
+    background: var(--surface); border-top: 1px solid var(--line);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .tabs-inner { max-width: 560px; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); }
+  .tab { border: 0; background: none; padding: 9px 0 10px; color: var(--muted); font-size: .78rem; font-weight: 600; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+  .tab svg { width: 24px; height: 24px; }
+  .tab.active { color: var(--accent); }
+
+  /* Sheets (editor + day menu) */
+  .sheet-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 10; display: flex; justify-content: center; align-items: flex-end; }
+  @media (min-width: 640px) { .sheet-backdrop { align-items: center; } }
+  .sheet {
+    background: var(--bg); width: 100%; max-width: 560px; max-height: 100%; overflow-y: auto;
+    border-radius: 18px 18px 0 0; padding: 0 16px calc(20px + env(safe-area-inset-bottom));
+  }
+  @media (min-width: 640px) { .sheet { border-radius: 18px; max-height: 92vh; } }
+  .sheet-head { position: sticky; top: 0; background: var(--bg); display: flex; align-items: center; gap: 8px; padding: 14px 0 10px; z-index: 1; }
+  .sheet-head h2 { flex: 1; margin: 0; font-size: 1.15rem; }
+  .field { margin-bottom: 16px; }
+  .field > label, .field-label { display: block; font-size: .85rem; font-weight: 650; color: var(--muted); margin-bottom: 6px; }
+  .input {
+    width: 100%; padding: 11px 12px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--surface); outline: none;
+  }
+  .input:focus { border-color: var(--accent); }
+  .ex-row {
+    display: grid; grid-template-columns: 112px 1fr 40px; gap: 6px; align-items: center;
+    padding: 10px 0; border-top: 1px solid var(--line);
+  }
+  .ex-row:first-of-type { border-top: 0; padding-top: 0; }
+  .ex-row .ex-name { grid-column: 1 / 3; }
+  .ex-row .remove { border: 0; background: none; color: var(--muted); font-size: 1.3rem; height: 44px; }
+  .ex-row .ex-details { grid-column: 2 / 4; }
+  .sets-field { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: .9rem; }
+  .sets-field .input { width: 64px; text-align: center; padding-left: 6px; padding-right: 6px; }
+  .single .ex-row { grid-template-columns: 112px 1fr; }
+  .single .ex-row .ex-name { grid-column: 1 / 3; }
+  .single .ex-row .ex-details { grid-column: 2 / 3; }
+  .seg { display: grid; grid-template-columns: repeat(3, 1fr); background: var(--surface-2); border-radius: 10px; padding: 3px; }
+  .seg label { text-align: center; padding: 8px 4px; border-radius: 8px; font-size: .9rem; font-weight: 600; color: var(--muted); }
+  .seg input { position: absolute; opacity: 0; pointer-events: none; }
+  .seg label:has(input:checked) { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+  .days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+  .day-chip { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 9px 0; font-weight: 600; font-size: .85rem; }
+  .day-chip.on { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+  .row { display: flex; gap: 10px; align-items: center; }
+  .row > * { flex: 1; }
+  .inline { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+  .inline input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--accent); }
+  .sheet-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 22px; }
+  .hint { color: var(--muted); font-size: .85rem; margin-top: 6px; }
+
+  .menu { padding-top: 16px; }
+  .menu-title { font-weight: 700; font-size: 1.1rem; }
+  .menu-sub { color: var(--muted); font-size: .9rem; margin-bottom: 12px; }
+  .menu-item {
+    width: 100%; text-align: left; border: 0; background: var(--surface); padding: 14px 16px;
+    font-weight: 600; border-top: 1px solid var(--line);
+  }
+  .menu-group { border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); margin-bottom: 10px; }
+  .menu-group .menu-item:first-child { border-top: 0; }
+  .menu-item:disabled { color: var(--muted); opacity: .6; }
+  .menu-item.danger { color: var(--miss); }
+  .menu-item .note { display: block; font-weight: 400; font-size: .85rem; color: var(--muted); }
+
+  /* Login */
+  .login { padding: 15vh 24px 24px; max-width: 380px; margin: 0 auto; }
+  .login h1 { margin: 0 0 6px; }
+  .login p { color: var(--muted); margin: 0 0 22px; }
+
+  .banner { background: var(--accent-soft); color: var(--text); font-size: .85rem; padding: 8px 16px; text-align: center; }
+  .toast {
+    position: fixed; left: 50%; bottom: calc(84px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+    background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: .9rem;
+    z-index: 20; max-width: calc(100% - 32px); box-shadow: 0 4px 16px rgba(0,0,0,.2);
+  }
+  .loading { text-align: center; color: var(--muted); padding: 30vh 0; }
+</style>
+</head>
+<body>
+<div id="app"><div class="loading">Loading…</div></div>
+
+<script type="module">
+/* ═══════════════════════════════════════════════════════════════
+   CONFIG — paste your Supabase values here (see README.md).
+   Both are safe to publish: your data is protected by sign-in and
+   the database rules in schema.sql. Never put the *secret* key here.
+   While these are left as placeholders the app runs in demo mode,
+   storing data only in this browser.
+   ═══════════════════════════════════════════════════════════════ */
+const CONFIG = {
+  SUPABASE_URL: 'https://sfhoijljemxirsehdqip.supabase.co',
+  SUPABASE_KEY: 'sb_publishable_GL0y-eyT0WjFHDXA62okBQ_Vb47jYF-',
+};
+const DEMO = CONFIG.SUPABASE_URL.includes('YOUR-PROJECT');
+
+/* How the data fits together
+   • Plans (Workouts page) are definitions: a workout or single exercise plus a schedule.
+   • The day log (day entries + checked-off sets) records each day separately.
+     A scheduled workout is shown "live" from its definition until you first touch it on
+     a given day (check a set, change sets, remove, edit). At that moment its exercises
+     are copied into that day's log, and from then on that day no longer depends on the
+     definition: editing or deleting the workout leaves the day as it was. */
+
+/* ───────────── Date helpers (local dates as "YYYY-MM-DD") ───────────── */
+const pad = n => String(n).padStart(2, '0');
+const toDS = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const parseDS = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+const addDays = (s, n) => { const d = parseDS(s); d.setDate(d.getDate() + n); return toDS(d); };
+const dayNum = s => { const [y, m, d] = s.split('-').map(Number); return Math.round(Date.UTC(y, m - 1, d) / 86400000); };
+const weekday = s => parseDS(s).getDay();
+const todayDS = () => toDS(new Date());
+const monthOf = s => s.slice(0, 7);
+const shiftMonth = (m, n) => { const [y, mo] = m.split('-').map(Number); const d = new Date(y, mo - 1 + n, 1); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; };
+const monthStart = m => `${m}-01`;
+const monthEnd = m => addDays(monthStart(shiftMonth(m, 1)), -1);
+const fmt = (s, opts) => parseDS(s).toLocaleDateString(undefined, opts);
+const DOW_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const DOW_LETTER = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+
+/* ───────────── Scheduling ───────────── */
+function occursOn(plan, ds) {
+  if (ds < plan.start_date) return false;
+  if (plan.end_date && ds > plan.end_date) return false;
+  switch (plan.repeat) {
+    case 'none': return ds === plan.start_date;
+    case 'weekly': return plan.weekdays.includes(weekday(ds));
+    case 'interval': return (dayNum(ds) - dayNum(plan.start_date)) % (plan.interval_days || 1) === 0;
+    default: return false;
+  }
+}
+const plansOn = ds => state.plans.filter(p => occursOn(p, ds));
+
+function scheduleText(p) {
+  const short = s => fmt(s, { month: 'short', day: 'numeric' });
+  const today = todayDS();
+  let t;
+  if (p.repeat === 'none') return `One time · ${fmt(p.start_date, { weekday: 'short', month: 'short', day: 'numeric' })}`;
+  if (p.repeat === 'weekly') {
+    const days = [...p.weekdays].sort((a, b) => a - b);
+    t = days.length === 7 ? 'Every day' : 'Every ' + days.map(d => DOW_SHORT[d]).join(', ');
+  } else {
+    t = p.interval_days === 1 ? 'Every day' : `Every ${p.interval_days} days`;
+  }
+  if (p.start_date > today || (p.repeat === 'interval' && p.interval_days > 1)) t += ` · from ${short(p.start_date)}`;
+  if (p.end_date) t += ` · until ${short(p.end_date)}`;
+  return t;
+}
+const isPast = p => p.repeat === 'none' ? p.start_date < todayDS() : !!p.end_date && p.end_date < todayDS();
+const setsLabel = n => `${n} set${n === 1 ? '' : 's'}`;
+
+/* ───────────── Day model ─────────────
+   A day's items = its logged entries + live ("virtual") items for scheduled plans
+   that haven't been started on that day yet. */
+function virtualItem(p, x, i, ds) {
+  return {
+    id: `v:${p.id}:${x.id}`, virtual: true, date: ds,
+    source_plan_id: p.id, source_exercise_id: x.id, kind: p.kind, group_title: p.title,
+    name: x.name, details: x.details, planned_sets: x.sets, sets: x.sets, position: i, removed: false,
+  };
+}
+function dayItems(ds) {
+  const entries = state.entries.filter(e => e.date === ds);
+  const started = new Set(entries.map(e => e.source_plan_id).filter(Boolean));
+  const items = entries.slice();
+  for (const p of plansOn(ds)) if (!started.has(p.id)) p.exercises.forEach((x, i) => items.push(virtualItem(p, x, i, ds)));
+  return items;
+}
+const doneKey = (entryId, setNo) => `${entryId}|${setNo}`;
+function setsDone(it) {
+  if (it.virtual) return 0;
+  let n = 0;
+  for (let s = 1; s <= it.sets; s++) if (state.done.has(doneKey(it.id, s))) n++;
+  return n;
+}
+function dayCounts(ds) {
+  let total = 0, done = 0;
+  for (const it of dayItems(ds)) if (!it.removed) { total += it.sets; done += setsDone(it); }
+  return { total, done };
+}
+function dayStatus(ds) {
+  const { total, done } = dayCounts(ds);
+  if (!total) return 'none';
+  if (done === total) return 'done';
+  if (done > 0) return 'partial';
+  return ds < todayDS() ? 'missed' : 'planned';
+}
+function dayGroups(items) {
+  const order = id => { const i = state.plans.findIndex(p => p.id === id); return i < 0 ? 1e9 : i; };
+  const workouts = new Map(), singles = [];
+  for (const it of items) {
+    if (it.removed) continue;
+    if (it.kind === 'workout') {
+      if (!workouts.has(it.source_plan_id)) workouts.set(it.source_plan_id, []);
+      workouts.get(it.source_plan_id).push(it);
+    } else singles.push(it);
+  }
+  const groups = [...workouts.entries()]
+    .sort((a, b) => order(a[0]) - order(b[0]))
+    .map(([, its]) => ({ title: its[0].group_title || 'Workout', items: its.sort((a, b) => a.position - b.position) }));
+  singles.sort((a, b) => (a.kind === 'extra') - (b.kind === 'extra') || order(a.source_plan_id) - order(b.source_plan_id) || a.position - b.position);
+  if (singles.length) groups.push({ title: 'Exercises', items: singles });
+  return groups;
+}
+const findItem = id => dayItems(state.date).find(it => it.id === id);
+
+/* ───────────── Utilities ───────────── */
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const uuid = () => (crypto.randomUUID ? crypto.randomUUID() :
+  'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 3 | 8)).toString(16); }));
+const clampSets = v => Math.min(50, Math.max(1, parseInt(v, 10) || 1));
+let toastTimer;
+function toast(msg) {
+  document.querySelector('.toast')?.remove();
+  const el = document.createElement('div');
+  el.className = 'toast'; el.textContent = msg;
+  document.body.appendChild(el);
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.remove(), 3200);
+}
+function normalizePlan(p) {
+  p.kind = p.kind || 'workout';
+  for (const e of p.exercises) { e.sets = e.sets || 1; e.details = e.details ?? ''; }
+  return p;
+}
+
+/* ───────────── Data stores ───────────── */
+function localStore() {
+  const KEY = 'exercise-app-demo-v3';
+  const blank = () => ({ plans: [], entries: [], completions: [], seeded: false });
+  let db;
+  try { db = JSON.parse(localStorage.getItem(KEY)) || blank(); } catch { db = blank(); }
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch { /* storage unavailable */ } };
+  if (!db.seeded) {
+    const t = todayDS();
+    db.plans.push(
+      { id: uuid(), kind: 'workout', title: 'Upper body', start_date: t, repeat: 'weekly', weekdays: [1, 3, 5], interval_days: null, end_date: null,
+        exercises: [
+          { id: uuid(), name: 'Push-ups', sets: 3, details: '12 reps' },
+          { id: uuid(), name: 'Dumbbell rows', sets: 3, details: '10 reps @ 30 lb' },
+          { id: uuid(), name: 'Shoulder press', sets: 3, details: '8 reps' },
+        ] },
+      { id: uuid(), kind: 'workout', title: 'Morning mobility', start_date: t, repeat: 'interval', weekdays: [], interval_days: 1, end_date: null,
+        exercises: [
+          { id: uuid(), name: 'Hip openers', sets: 1, details: '5 min' },
+          { id: uuid(), name: 'Plank', sets: 3, details: '45 s' },
+        ] },
+      { id: uuid(), kind: 'single', title: 'Walk', start_date: t, repeat: 'weekly', weekdays: [0, 2, 4, 6], interval_days: null, end_date: null,
+        exercises: [{ id: uuid(), name: 'Walk', sets: 1, details: '30 min' }] },
+    );
+    db.seeded = true; save();
+  }
+  return {
+    async getUser() { return { email: 'demo' }; },
+    onAuthChange() {},
+    async signIn() {},
+    async signOut() {},
+    async listPlans() { return structuredClone(db.plans).map(normalizePlan); },
+    async savePlan(p) {
+      const i = db.plans.findIndex(x => x.id === p.id);
+      if (i >= 0) db.plans[i] = structuredClone(p); else db.plans.push(structuredClone(p));
+      save();
+    },
+    async deletePlan(id) { db.plans = db.plans.filter(x => x.id !== id); save(); },
+    async listEntries(from, to) { return structuredClone(db.entries.filter(e => e.date >= from && e.date <= to)); },
+    async createEntries(rows) { db.entries.push(...structuredClone(rows)); save(); },
+    async updateEntry(id, patch) { Object.assign(db.entries.find(e => e.id === id) || {}, patch); save(); },
+    async listCompletions(from, to) { return db.completions.filter(c => c.date >= from && c.date <= to); },
+    async setDone(entry_id, date, set_no, done) {
+      db.completions = db.completions.filter(c => !(c.entry_id === entry_id && c.set_no === set_no));
+      if (done) db.completions.push({ entry_id, date, set_no });
+      save();
+    },
+  };
+}
+
+async function supabaseStore() {
+  const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
+  const sb = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_KEY);
+  const ok = ({ data, error }) => { if (error) throw error; return data; };
+  const ENTRY_COLS = 'id, date, source_plan_id, source_exercise_id, kind, group_title, name, details, planned_sets, sets, position, removed';
+  return {
+    async getUser() { const { data } = await sb.auth.getSession(); return data.session?.user ?? null; },
+    onAuthChange(cb) { sb.auth.onAuthStateChange((_event, session) => setTimeout(() => cb(session?.user ?? null), 0)); },
+    async signIn(email, password) { ok(await sb.auth.signInWithPassword({ email, password })); },
+    async signOut() { await sb.auth.signOut(); },
+    async listPlans() {
+      const rows = ok(await sb.from('plans').select('*, exercises:plan_exercises(*)').order('created_at'));
+      for (const r of rows) r.exercises.sort((a, b) => a.position - b.position);
+      return rows.map(normalizePlan);
+    },
+    async savePlan(p) {
+      const plan = { id: p.id, kind: p.kind, title: p.title, start_date: p.start_date, repeat: p.repeat,
+        weekdays: p.weekdays, interval_days: p.interval_days, end_date: p.end_date };
+      ok(await sb.from('plans').upsert(plan));
+      const rows = p.exercises.map((e, i) => ({ id: e.id, plan_id: p.id, name: e.name, sets: e.sets, details: e.details, position: i }));
+      ok(await sb.from('plan_exercises').delete().eq('plan_id', p.id).not('id', 'in', `(${rows.map(r => r.id).join(',')})`));
+      ok(await sb.from('plan_exercises').upsert(rows));
+    },
+    async deletePlan(id) { ok(await sb.from('plans').delete().eq('id', id)); },
+    async listEntries(from, to) {
+      return ok(await sb.from('day_entries').select(ENTRY_COLS).gte('date', from).lte('date', to));
+    },
+    async createEntries(rows) { ok(await sb.from('day_entries').insert(rows)); },
+    async updateEntry(id, patch) { ok(await sb.from('day_entries').update(patch).eq('id', id)); },
+    async listCompletions(from, to) {
+      return ok(await sb.from('completions').select('entry_id, set_no').gte('date', from).lte('date', to));
+    },
+    async setDone(entry_id, date, set_no, done) {
+      if (done) ok(await sb.from('completions').upsert({ entry_id, date, set_no }));
+      else ok(await sb.from('completions').delete().eq('entry_id', entry_id).eq('set_no', set_no));
+    },
+  };
+}
+
+/* ───────────── State ───────────── */
+const state = {
+  user: null,
+  plans: [],
+  entries: [],          // logged day entries for the loaded months
+  done: new Set(),      // "entryId|setNo"
+  loadedMonths: new Set(),
+  view: 'day',
+  date: todayDS(),
+  month: monthOf(todayDS()),
+  editing: null,
+  menu: null,           // item id whose day menu is open
+  busy: false,
+};
+let store;
+
+async function loadPlans() { state.plans = await store.listPlans(); }
+async function ensureMonths(months) {
+  const missing = months.filter(m => !state.loadedMonths.has(m));
+  if (!missing.length) return;
+  missing.forEach(m => state.loadedMonths.add(m));
+  // Load each missing month separately so ranges never overlap with what's already loaded.
+  await Promise.all(missing.map(async m => {
+    const [entries, done] = await Promise.all([
+      store.listEntries(monthStart(m), monthEnd(m)), store.listCompletions(monthStart(m), monthEnd(m))]);
+    state.entries.push(...entries);
+    for (const c of done) state.done.add(doneKey(c.entry_id, c.set_no));
+  })).catch(err => { missing.forEach(m => state.loadedMonths.delete(m)); throw err; });
+}
+const ensureAround = m => ensureMonths([shiftMonth(m, -1), m, shiftMonth(m, 1)]);
+function resetCache() { state.entries = []; state.done = new Set(); state.loadedMonths = new Set(); }
+async function resync() {
+  resetCache();
+  await loadPlans();
+  await ensureAround(state.view === 'calendar' ? state.month : monthOf(state.date));
+  render();
+}
+
+/* Writes to the day log go through a queue so they reach the server in order
+   (e.g. a day's entries are created before a set on them is checked off). */
+let writeChain = Promise.resolve();
+function enqueue(fn) {
+  writeChain = writeChain.then(fn).catch(async err => {
+    console.error(err);
+    toast('Couldn’t save that change. Reloading your data.');
+    try { await resync(); } catch (e) { console.error(e); }
+  });
+  return writeChain;
+}
+
+// Copy a scheduled workout into the day log (the first time it's touched on that day).
+function materialize(item) {
+  if (!item.virtual) return item;
+  const p = state.plans.find(x => x.id === item.source_plan_id);
+  const rows = p.exercises.map((x, i) => ({
+    id: uuid(), date: item.date, source_plan_id: p.id, source_exercise_id: x.id, kind: p.kind, group_title: p.title,
+    name: x.name, details: x.details, planned_sets: x.sets, sets: x.sets, position: i, removed: false,
+  }));
+  state.entries.push(...rows);
+  enqueue(() => store.createEntries(rows));
+  return rows.find(r => r.source_exercise_id === item.source_exercise_id);
+}
+function updateEntry(entry, patch) {
+  Object.assign(entry, patch);
+  enqueue(() => store.updateEntry(entry.id, patch));
+}
+
+/* ───────────── Views ───────────── */
+const app = document.getElementById('app');
+
+const ICONS = {
+  day: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/></svg>',
+  calendar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
+  plans: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>',
+};
+
+function render() {
+  if (!state.user) { app.innerHTML = loginView(); return; }
+  const sheetScroll = document.querySelector('.sheet')?.scrollTop || 0;
+  const main = state.view === 'day' ? dayView() : state.view === 'calendar' ? calendarView() : plansView();
+  app.innerHTML = `
+    ${DEMO ? '<div class="banner">Demo mode: data is saved in this browser only. Add your Supabase settings to sync devices.</div>' : ''}
+    <main class="view">${main}</main>
+    <nav class="tabs"><div class="tabs-inner">
+      ${[['day', 'Tracker'], ['calendar', 'Calendar'], ['plans', 'Workouts']].map(([v, label]) =>
+        `<button type="button" class="tab ${state.view === v ? 'active' : ''}" data-action="tab" data-view="${v}">${ICONS[v]}${label}</button>`).join('')}
+    </div></nav>
+    ${state.editing ? editorView() : state.menu ? dayMenuView() : ''}`;
+  const sheet = document.querySelector('.sheet');
+  if (sheet) sheet.scrollTop = sheetScroll;
+}
+
+function loginView() {
+  return `
+    <form class="login" id="login-form">
+      <h1>Workouts</h1>
+      <p>Sign in to see your schedule.</p>
+      <div class="field"><label for="email">Email</label>
+        <input class="input" id="email" name="email" type="email" autocomplete="username" required></div>
+      <div class="field"><label for="password">Password</label>
+        <input class="input" id="password" name="password" type="password" autocomplete="current-password" required></div>
+      <button class="btn block" type="submit" ${state.busy ? 'disabled' : ''}>${state.busy ? 'Signing in…' : 'Sign in'}</button>
+    </form>`;
+}
+
+function exerciseRow(it) {
+  const n = it.sets, d = setsDone(it), all = d === n;
+  const changed = it.kind !== 'extra' && n !== it.planned_sets;
+  const info = [it.details ? esc(it.details) : '', n > 1 || changed ? setsLabel(n) : '']
+    .filter(Boolean).join(' · ') + (changed ? ` <span class="changed">(planned ${it.planned_sets})</span>` : '');
+  const more = `<button type="button" class="more" data-action="day-menu" data-id="${it.id}" aria-label="Change ${esc(it.name)} for this day">⋯</button>`;
+  if (n === 1) {
+    return `<li class="ex ${all ? 'done' : ''}">
+      <button type="button" class="check-row" data-action="toggle-set" data-id="${it.id}" data-set="1" aria-pressed="${all}">
+        <span class="box"></span>
+        <span class="txt"><span class="name">${esc(it.name)}</span>${info ? `<span class="details">${info}</span>` : ''}</span>
+      </button>${more}</li>`;
+  }
+  let chips = '';
+  for (let s = 1; s <= n; s++) {
+    const on = !it.virtual && state.done.has(doneKey(it.id, s));
+    chips += `<button type="button" class="set ${on ? 'on' : ''}" data-action="toggle-set" data-id="${it.id}" data-set="${s}" aria-pressed="${on}" aria-label="${esc(it.name)} set ${s}">${s}</button>`;
+  }
+  return `<li class="ex ${all ? 'done' : ''}">
+    <div class="ex-main">
+      <div class="txt"><span class="name">${esc(it.name)}</span><span class="details">${info} · ${d}/${n} done</span></div>
+      <div class="sets">${chips}</div>
+    </div>${more}</li>`;
+}
+
+function dayCard({ title, items }) {
+  let total = 0, done = 0;
+  for (const it of items) { total += it.sets; done += setsDone(it); }
+  return `<section class="card ${done === total ? 'complete' : ''}">
+    <div class="card-head"><h2>${esc(title)}</h2><span class="pill">${done}/${total} sets</span></div>
+    <ul class="checklist">${items.map(exerciseRow).join('')}</ul></section>`;
+}
+
+function dayView() {
+  const ds = state.date, today = todayDS();
+  const items = dayItems(ds);
+  const removed = items.filter(it => it.removed);
+  const { total, done } = dayCounts(ds);
+  const cards = dayGroups(items).map(dayCard).join('');
+
+  const rel = ds === today ? 'Today' : ds === addDays(today, -1) ? 'Yesterday' : ds === addDays(today, 1) ? 'Tomorrow' : '';
+  const big = rel || fmt(ds, { weekday: 'long' });
+  const sub = fmt(ds, rel ? { weekday: 'long', month: 'long', day: 'numeric' } : { month: 'long', day: 'numeric', year: 'numeric' });
+  return `
+    <header class="top">
+      <button type="button" class="icon-btn" data-action="shift-day" data-n="-1" aria-label="Previous day">‹</button>
+      <div class="title"><div class="big">${big}</div><div class="sub">${sub}</div></div>
+      <button type="button" class="icon-btn" data-action="shift-day" data-n="1" aria-label="Next day">›</button>
+    </header>
+    ${ds !== today ? '<div class="center"><button type="button" class="link-btn" data-action="go-today">Back to today</button></div>' : ''}
+    ${total ? `<div class="progress" aria-label="${done} of ${total} sets done"><span style="width:${Math.round(done / total * 100)}%"></span></div>` : ''}
+    ${cards || `<div class="empty"><div class="big">Rest day</div>Nothing scheduled.
+      <div class="actions">
+        <button type="button" class="btn" data-action="new-entry">Add an exercise</button>
+        <button type="button" class="btn secondary" data-action="new-plan" data-kind="workout" data-date="${ds}">Schedule a workout</button>
+      </div></div>`}
+    ${removed.length ? `<div class="removed"><div class="section-label">Removed from this day</div>
+      ${removed.map(it => `<div class="removed-row"><span>${esc(it.name)}</span>
+        <button type="button" class="link-btn" data-action="restore" data-id="${it.id}">Restore</button></div>`).join('')}</div>` : ''}
+    ${cards ? '<div class="add-day"><button type="button" class="link-btn" data-action="new-entry">+ Add an exercise to this day</button></div>' : ''}`;
+}
+
+function dayMenuView() {
+  const it = findItem(state.menu);
+  if (!it) return '';
+  const ds = state.date, n = it.sets;
+  const changed = it.kind !== 'extra' && n !== it.planned_sets;
+  const plan = state.plans.find(p => p.id === it.source_plan_id);
+  return `
+    <div class="sheet-backdrop" data-action="backdrop">
+      <div class="sheet menu" role="dialog" aria-label="Change ${esc(it.name)} for this day">
+        <div class="menu-title">${esc(it.name)}</div>
+        <div class="menu-sub">Changes apply to ${fmt(ds, { weekday: 'long', month: 'short', day: 'numeric' })} only · ${setsLabel(n)}</div>
+        <div class="menu-group">
+          <button type="button" class="menu-item" data-action="adjust" data-sets="${n - 1}" ${n <= 1 ? 'disabled' : ''}>Remove a set
+            <span class="note">${n > 1 ? `${n} → ${n - 1} sets` : 'Only one set left. Use “Remove from this day”.'}</span></button>
+          <button type="button" class="menu-item" data-action="adjust" data-sets="${n + 1}">Add a set<span class="note">${n} → ${n + 1} sets</span></button>
+          ${changed ? `<button type="button" class="menu-item" data-action="adjust" data-sets="${it.planned_sets}">Reset to plan<span class="note">${setsLabel(it.planned_sets)}</span></button>` : ''}
+          <button type="button" class="menu-item" data-action="edit-entry">Edit for this day<span class="note">Name, sets, details (e.g. the weight you used)</span></button>
+          <button type="button" class="menu-item danger" data-action="remove-entry">Remove from this day</button>
+        </div>
+        ${plan ? `<div class="menu-group">
+          <button type="button" class="menu-item" data-action="edit-plan" data-id="${plan.id}">Edit ${plan.kind === 'single' ? 'this exercise' : `“${esc(plan.title)}”`} for future days</button>
+        </div>` : ''}
+        <button type="button" class="btn secondary block" data-action="close-sheet">Cancel</button>
+      </div>
+    </div>`;
+}
+
+function calendarView() {
+  const m = state.month, today = todayDS();
+  const first = monthStart(m), last = monthEnd(m);
+  const gridStart = addDays(first, -weekday(first));
+  const gridEnd = addDays(last, 6 - weekday(last));
+  let cells = '';
+  for (let ds = gridStart; ds <= gridEnd; ds = addDays(ds, 1)) {
+    const cls = ['cal-day', `st-${dayStatus(ds)}`];
+    if (monthOf(ds) !== m) cls.push('other');
+    if (ds === today) cls.push('today');
+    if (ds === state.date) cls.push('selected');
+    cells += `<button type="button" class="${cls.join(' ')}" data-action="open-day" data-date="${ds}" aria-label="${fmt(ds, { dateStyle: 'full' })}">
+      <span class="num">${parseDS(ds).getDate()}</span><span class="dot"></span></button>`;
+  }
+  return `
+    <header class="top">
+      <button type="button" class="icon-btn" data-action="shift-month" data-n="-1" aria-label="Previous month">‹</button>
+      <div class="title"><div class="big">${parseDS(first).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</div></div>
+      <button type="button" class="icon-btn" data-action="shift-month" data-n="1" aria-label="Next month">›</button>
+    </header>
+    <div class="cal"><div class="cal-grid">
+      ${DOW_LETTER.map(d => `<div class="cal-dow">${d}</div>`).join('')}${cells}
+    </div></div>
+    <div class="legend">
+      <span class="st-done"><span class="dot"></span>Done</span>
+      <span class="st-partial"><span class="dot"></span>Partly done</span>
+      <span class="st-missed"><span class="dot"></span>Missed</span>
+      <span class="st-planned"><span class="dot"></span>Planned</span>
+    </div>
+    ${monthOf(today) !== m ? '<div class="center" style="margin-top:10px"><button type="button" class="link-btn" data-action="this-month">Back to this month</button></div>' : ''}`;
+}
+
+function plansView() {
+  const item = p => {
+    const sub = p.kind === 'single'
+      ? [setsLabel(p.exercises[0].sets), p.exercises[0].details].filter(Boolean).join(' · ')
+      : `${p.exercises.length} exercise${p.exercises.length === 1 ? '' : 's'}`;
+    return `<button type="button" class="plan-item ${isPast(p) ? 'past' : ''}" data-action="edit-plan" data-id="${p.id}">
+      <div class="t">${esc(p.title)}</div>
+      <div class="s">${esc(scheduleText(p))} · ${esc(sub)}</div></button>`;
+  };
+  const active = state.plans.filter(p => !isPast(p)), past = state.plans.filter(isPast);
+  const workouts = active.filter(p => p.kind !== 'single'), singles = active.filter(p => p.kind === 'single');
+  return `
+    <h1 class="page">Workouts</h1>
+    <div class="btn-row">
+      <button type="button" class="btn" data-action="new-plan" data-kind="workout">+ Workout</button>
+      <button type="button" class="btn secondary" data-action="new-plan" data-kind="single">+ Exercise</button>
+    </div>
+    ${!active.length ? '<div class="empty">Nothing scheduled yet.<br>A workout is a group of exercises. An exercise can also be scheduled on its own.</div>' : ''}
+    ${workouts.length ? `<div class="section-label">Workouts</div>${workouts.map(item).join('')}` : ''}
+    ${singles.length ? `<div class="section-label">Single exercises</div>${singles.map(item).join('')}` : ''}
+    ${past.length ? `<div class="section-label">Finished</div>${past.map(item).join('')}` : ''}
+    <p class="hint center" style="margin-top:20px">Changes here apply to upcoming days. Days you've already started keep what you did.</p>
+    <div class="account">${DEMO ? 'Demo mode' : `Signed in as ${esc(state.user.email)} · <button type="button" class="link-btn" data-action="sign-out">Sign out</button>`}</div>`;
+}
+
+function editorView() {
+  const e = state.editing, kind = e.kind;
+  const oneEx = kind !== 'workout';
+  const dayLabel = fmt(state.date, { weekday: 'short', month: 'short', day: 'numeric' });
+  const heading = kind === 'entry'
+    ? (e.isNew ? `Add to ${dayLabel}` : `Edit for ${dayLabel}`)
+    : `${e.isNew ? 'New' : 'Edit'} ${kind === 'single' ? 'exercise' : 'workout'}`;
+  const exRows = e.exercises.map((x, i) => `
+    <div class="ex-row" data-ex-id="${x.id}">
+      <input class="input ex-name" placeholder="${oneEx ? 'e.g. Squats' : 'Exercise'}" value="${esc(x.name)}" aria-label="Exercise ${i + 1} name">
+      ${oneEx ? '' : `<button type="button" class="remove" data-action="remove-ex" data-i="${i}" aria-label="Remove exercise">×</button>`}
+      <label class="sets-field"><input class="input ex-sets" type="number" inputmode="numeric" min="1" max="50" value="${x.sets}" aria-label="Exercise ${i + 1} sets"> sets</label>
+      <input class="input ex-details" placeholder="Per set, e.g. 10 reps @ 40 lb" value="${esc(x.details)}" aria-label="Exercise ${i + 1} details">
+    </div>`).join('');
+  const radio = (v, label) => `<label><input type="radio" name="repeat" value="${v}" ${e.repeat === v ? 'checked' : ''}>${label}</label>`;
+  const schedule = kind === 'entry' ? '' : `
+    <div class="field"><span class="field-label">Schedule</span>
+      <div class="seg">${radio('none', 'One day')}${radio('weekly', 'Weekly')}${radio('interval', 'Every N days')}</div></div>
+    ${e.repeat === 'weekly' ? `<div class="field"><span class="field-label">On these days</span><div class="days">
+      ${DOW_SHORT.map((d, i) => `<button type="button" class="day-chip ${e.weekdays.includes(i) ? 'on' : ''}" data-action="toggle-day" data-d="${i}" aria-pressed="${e.weekdays.includes(i)}">${d}</button>`).join('')}
+      </div></div>` : ''}
+    ${e.repeat === 'interval' ? `<div class="field"><label for="f-int">Repeat every</label>
+      <div class="row"><input class="input" id="f-int" name="interval_days" type="number" inputmode="numeric" min="1" max="365" value="${e.interval_days || 2}"><span>days</span></div></div>` : ''}
+    <div class="field"><label for="f-start">${e.repeat === 'none' ? 'Date' : 'Starts'}</label>
+      <input class="input" id="f-start" name="start_date" type="date" value="${e.start_date}"></div>
+    ${e.repeat !== 'none' ? `<div class="field">
+      <label class="inline"><input type="checkbox" name="has_end" ${e.has_end ? 'checked' : ''}> Ends on a date</label>
+      ${e.has_end ? `<input class="input" style="margin-top:8px" name="end_date" type="date" value="${e.end_date || todayDS()}" aria-label="End date">` : ''}
+    </div>` : ''}`;
+  const hint = kind === 'entry'
+    ? `Only changes ${dayLabel}. Your workouts and other days stay as they are.`
+    : 'Changes apply to upcoming days and days you haven’t started yet. Days you’ve already started keep what you did.';
+  return `
+    <div class="sheet-backdrop" data-action="backdrop">
+      <form class="sheet ${oneEx ? 'single' : ''}" id="editor-form" role="dialog" aria-label="${esc(heading)}">
+        <div class="sheet-head">
+          <h2>${esc(heading)}</h2>
+          <button type="button" class="btn secondary" data-action="close-sheet">Cancel</button>
+          <button type="submit" class="btn" ${state.busy ? 'disabled' : ''}>Save</button>
+        </div>
+        ${kind === 'workout' ? `<div class="field"><label for="f-title">Workout name</label>
+          <input class="input" id="f-title" name="title" placeholder="e.g. Leg day" value="${esc(e.title)}"></div>` : ''}
+        <div class="field"><span class="field-label">${oneEx ? 'Exercise' : 'Exercises'}</span>
+          ${exRows}
+          ${oneEx ? '' : '<button type="button" class="link-btn" data-action="add-ex">+ Add exercise</button>'}</div>
+        ${schedule}
+        <div class="hint">${hint}</div>
+        ${kind !== 'entry' && !e.isNew ? `<div class="sheet-actions"><button type="button" class="btn danger" data-action="delete-plan">Delete ${kind === 'single' ? 'exercise' : 'workout'}</button></div>` : ''}
+      </form>
+    </div>`;
+}
+
+/* ───────────── Editor logic ───────────── */
+const blankExercise = () => ({ id: uuid(), name: '', sets: 3, details: '' });
+
+function openEditor(plan, { date, kind } = {}) {
+  state.menu = null;
+  if (plan) {
+    state.editing = { ...structuredClone(plan), isNew: false, has_end: !!plan.end_date };
+  } else {
+    const start = date || todayDS();
+    state.editing = {
+      id: uuid(), isNew: true, kind: kind || 'workout', title: '', start_date: start, repeat: 'weekly',
+      weekdays: [weekday(start)], interval_days: 2, end_date: null, has_end: false,
+      exercises: [blankExercise()],
+    };
+  }
+  render();
+  if (!plan) document.querySelector(state.editing.kind === 'workout' ? '#f-title' : '.ex-name')?.focus({ preventScroll: true });
+}
+
+function openEntryEditor(item) {
+  state.menu = null;
+  state.editing = item
+    ? { kind: 'entry', isNew: false, itemId: item.id, exercises: [{ id: item.id, name: item.name, sets: item.sets, details: item.details }] }
+    : { kind: 'entry', isNew: true, exercises: [blankExercise()] };
+  render();
+  if (!item) document.querySelector('.ex-name')?.focus({ preventScroll: true });
+}
+
+function syncEditor() {
+  const e = state.editing, form = document.getElementById('editor-form');
+  if (!e || !form) return;
+  const f = name => form.elements.namedItem(name);
+  if (f('title')) e.title = f('title').value;
+  e.exercises = [...form.querySelectorAll('.ex-row')].map(r => ({
+    id: r.dataset.exId,
+    name: r.querySelector('.ex-name').value,
+    sets: clampSets(r.querySelector('.ex-sets').value),
+    details: r.querySelector('.ex-details').value,
+  }));
+  e.repeat = form.querySelector('input[name=repeat]:checked')?.value || e.repeat;
+  if (f('start_date')) e.start_date = f('start_date').value;
+  if (f('interval_days')) e.interval_days = parseInt(f('interval_days').value, 10) || 1;
+  if (f('has_end')) e.has_end = f('has_end').checked;
+  if (f('end_date')) e.end_date = f('end_date').value;
+}
+
+function saveEntryEditor(e, x) {
+  if (e.isNew) {
+    const extras = state.entries.filter(en => en.date === state.date && en.kind === 'extra').length;
+    const row = { id: uuid(), date: state.date, source_plan_id: null, source_exercise_id: null, kind: 'extra', group_title: '',
+      name: x.name, details: x.details, planned_sets: x.sets, sets: x.sets, position: extras, removed: false };
+    state.entries.push(row);
+    enqueue(() => store.createEntries([row]));
+  } else {
+    const item = findItem(e.itemId);
+    if (item) {
+      const entry = materialize(item);
+      updateEntry(entry, { name: x.name, details: x.details, sets: x.sets, ...(entry.kind === 'extra' ? { planned_sets: x.sets } : {}) });
+    }
+  }
+  state.editing = null;
+  render();
+}
+
+async function saveEditor() {
+  syncEditor();
+  const e = state.editing;
+  const exercises = e.exercises.map(x => ({ ...x, name: x.name.trim(), details: x.details.trim() })).filter(x => x.name);
+  if (!exercises.length) return toast(e.kind === 'workout' ? 'Add at least one exercise.' : 'Give the exercise a name.');
+  if (e.kind === 'entry') return saveEntryEditor(e, exercises[0]);
+  if (!e.start_date) return toast('Pick a date.');
+  if (e.repeat === 'weekly' && !e.weekdays.length) return toast('Pick at least one day of the week.');
+  const end = e.repeat !== 'none' && e.has_end ? e.end_date : null;
+  if (end && end < e.start_date) return toast('The end date is before the start date.');
+  const plan = {
+    id: e.id, kind: e.kind,
+    title: e.kind === 'single' ? exercises[0].name : (e.title.trim() || 'Workout'),
+    start_date: e.start_date, repeat: e.repeat,
+    weekdays: e.repeat === 'weekly' ? [...e.weekdays].sort((a, b) => a - b) : [],
+    interval_days: e.repeat === 'interval' ? Math.max(1, e.interval_days || 1) : null,
+    end_date: end, exercises,
+  };
+  state.busy = true; render();
+  try {
+    await writeChain;               // let pending day-log writes finish first
+    await store.savePlan(plan);
+    await loadPlans();
+    state.editing = null;
+    toast('Saved');
+  } catch (err) {
+    console.error(err); toast('Couldn’t save. ' + (err.message || 'Check your connection.'));
+  } finally { state.busy = false; render(); }
+}
+
+/* ───────────── Day actions ───────────── */
+function toggleSet(itemId, setNo) {
+  const item = findItem(itemId);
+  if (!item) return;
+  const entry = materialize(item);
+  const k = doneKey(entry.id, setNo), was = state.done.has(k);
+  was ? state.done.delete(k) : state.done.add(k);
+  enqueue(() => store.setDone(entry.id, entry.date, setNo, !was));
+  render();
+}
+function withMenuEntry(fn) {
+  const item = findItem(state.menu);
+  state.menu = null;
+  if (item) fn(materialize(item));
+  render();
+}
+
+/* ───────────── Events ───────────── */
+async function go(fn) {
+  try { await fn(); } catch (err) { console.error(err); toast(err.message || 'Something went wrong.'); }
+  render();
+}
+
+app.addEventListener('click', ev => {
+  const el = ev.target.closest('[data-action]');
+  if (!el || el.disabled) return;
+  const a = el.dataset.action;
+  if (a === 'backdrop' && ev.target !== el) return;  // only clicks on the backdrop itself close the sheet
+  switch (a) {
+    case 'tab':
+      state.view = el.dataset.view;
+      if (state.view === 'calendar') state.month = monthOf(state.date);
+      return go(() => ensureAround(state.view === 'calendar' ? state.month : monthOf(state.date)));
+    case 'shift-day':
+      state.date = addDays(state.date, +el.dataset.n);
+      return go(() => ensureAround(monthOf(state.date)));
+    case 'go-today':
+      state.date = todayDS();
+      return go(() => ensureAround(monthOf(state.date)));
+    case 'shift-month':
+      state.month = shiftMonth(state.month, +el.dataset.n);
+      return go(() => ensureAround(state.month));
+    case 'this-month':
+      state.month = monthOf(todayDS());
+      return go(() => ensureAround(state.month));
+    case 'open-day':
+      state.date = el.dataset.date; state.view = 'day';
+      return go(() => ensureAround(monthOf(state.date)));
+    case 'toggle-set': return toggleSet(el.dataset.id, +el.dataset.set);
+    case 'day-menu': state.menu = el.dataset.id; return render();
+    case 'adjust': {
+      const sets = +el.dataset.sets;
+      return withMenuEntry(entry => updateEntry(entry, { sets }));
+    }
+    case 'remove-entry':
+      return withMenuEntry(entry => { updateEntry(entry, { removed: true }); toast(`${entry.name} removed from this day`); });
+    case 'restore': {
+      const entry = state.entries.find(en => en.id === el.dataset.id);
+      if (entry) updateEntry(entry, { removed: false });
+      return render();
+    }
+    case 'edit-entry': return openEntryEditor(findItem(state.menu));
+    case 'new-entry': return openEntryEditor(null);
+    case 'new-plan': return openEditor(null, { date: el.dataset.date, kind: el.dataset.kind });
+    case 'edit-plan': return openEditor(state.plans.find(p => p.id === el.dataset.id));
+    case 'close-sheet': case 'backdrop':
+      state.editing = null; state.menu = null; return render();
+    case 'add-ex':
+      syncEditor(); state.editing.exercises.push(blankExercise()); render();
+      [...document.querySelectorAll('.ex-name')].pop()?.focus();
+      return;
+    case 'remove-ex':
+      syncEditor(); state.editing.exercises.splice(+el.dataset.i, 1);
+      if (!state.editing.exercises.length) state.editing.exercises.push(blankExercise());
+      return render();
+    case 'toggle-day': {
+      syncEditor();
+      const d = +el.dataset.d, w = state.editing.weekdays;
+      state.editing.weekdays = w.includes(d) ? w.filter(x => x !== d) : [...w, d];
+      return render();
+    }
+    case 'delete-plan': {
+      const e = state.editing;
+      const label = e.kind === 'single' ? (e.exercises[0]?.name || 'this exercise') : (e.title || 'this workout');
+      if (!confirm(`Delete “${label}”? It won't be scheduled anymore. Days you've already started keep their record.`)) return;
+      return go(async () => { await writeChain; await store.deletePlan(e.id); await loadPlans(); state.editing = null; toast('Deleted'); });
+    }
+    case 'sign-out':
+      return go(async () => { await writeChain; await store.signOut(); signedOut(); });
+  }
+});
+
+app.addEventListener('change', ev => {
+  if (ev.target.name === 'repeat' || ev.target.name === 'has_end') { syncEditor(); render(); }
+});
+
+app.addEventListener('submit', ev => {
+  ev.preventDefault();
+  if (ev.target.id === 'editor-form') return saveEditor();
+  if (ev.target.id === 'login-form') return signIn(ev.target);
+});
+
+document.addEventListener('keydown', ev => {
+  if (ev.key === 'Escape' && (state.editing || state.menu)) { state.editing = null; state.menu = null; render(); }
+});
+
+/* ───────────── Auth flow ───────────── */
+async function signedIn(user) {
+  state.user = user;
+  app.innerHTML = '<div class="loading">Loading…</div>';
+  try { await loadPlans(); await ensureAround(monthOf(state.date)); }
+  catch (err) { console.error(err); toast('Couldn’t load your data. ' + (err.message || '')); }
+  render();
+}
+function signedOut() {
+  state.user = null; state.plans = []; state.editing = null; state.menu = null;
+  resetCache();
+  render();
+}
+async function signIn(form) {
+  state.busy = true; render();
+  const email = form.elements.namedItem('email').value, password = form.elements.namedItem('password').value;
+  try { await store.signIn(email, password); }
+  catch (err) {
+    state.busy = false; render();
+    document.getElementById('email').value = email;
+    toast(err.message || 'Sign-in failed.');
+    return;
+  }
+  state.busy = false;
+  // onAuthChange picks up the new session and loads data.
+}
+
+// Refresh when the app comes back to the foreground (e.g. after using it on another device).
+// If you were looking at "today" when you left, it follows the real date when you return.
+let wasToday = true;
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') { wasToday = state.date === todayDS(); return; }
+  if (!state.user || state.editing || state.menu) return;
+  if (wasToday) state.date = todayDS();
+  go(async () => { await writeChain; await resync(); });
+});
+
+/* ───────────── Boot ───────────── */
+(async () => {
+  try {
+    store = DEMO ? localStore() : await supabaseStore();
+  } catch (err) {
+    console.error(err);
+    app.innerHTML = '<div class="loading">Couldn’t reach the server. Check your connection and reload.</div>';
+    return;
+  }
+  store.onAuthChange(user => {
+    if (user && user.id !== state.user?.id) signedIn(user);
+    else if (!user && state.user) signedOut();
+  });
+  const user = await store.getUser();
+  if (state.user) return;            // the auth listener already signed us in
+  if (user) await signedIn(user); else render();
+})();
+</script>
+</body>
+</html>
