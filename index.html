@@ -258,19 +258,13 @@
 <body>
 <div id="app"><div class="loading">Loading…</div></div>
 
+<!-- Your Supabase settings live in config.js next to this file (see README.md).
+     If config.js is missing, or still has the placeholder values, the app runs in
+     demo mode and stores data only in this browser. -->
+<script src="config.js"></script>
 <script type="module">
-/* ═══════════════════════════════════════════════════════════════
-   CONFIG — paste your Supabase values here (see README.md).
-   Both are safe to publish: your data is protected by sign-in and
-   the database rules in schema.sql. Never put the *secret* key here.
-   While these are left as placeholders the app runs in demo mode,
-   storing data only in this browser.
-   ═══════════════════════════════════════════════════════════════ */
-const CONFIG = {
-  SUPABASE_URL: 'https://sfhoijljemxirsehdqip.supabase.co',
-  SUPABASE_KEY: 'sb_publishable_GL0y-eyT0WjFHDXA62okBQ_Vb47jYF-',
-};
-const DEMO = CONFIG.SUPABASE_URL.includes('YOUR-PROJECT');
+const CONFIG = window.APP_CONFIG || {};
+const DEMO = !CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_KEY || CONFIG.SUPABASE_URL.includes('YOUR-PROJECT');
 
 /* How the data fits together
    • Plans (Workouts page) are definitions: a workout or single exercise plus a schedule.
@@ -507,23 +501,44 @@ const state = {
 };
 let store;
 
-async function loadPlans() { state.plans = await store.listPlans(); }
+/* Loading the day log.
+   Each cache reset starts a new "generation". A month load that finishes after a newer
+   reset belongs to an old generation and is discarded, so overlapping reloads (e.g. the
+   app being switched away from and back to quickly) can't add the same entries twice. */
+let cacheGen = 0;
+const monthLoads = new Map();   // "gen|month" -> in-flight load
+async function loadPlans() {
+  const gen = cacheGen, plans = await store.listPlans();
+  if (gen === cacheGen) state.plans = plans;
+}
+function mergeEntries(entries) {
+  const have = new Set(state.entries.map(e => e.id));
+  for (const e of entries) if (!have.has(e.id)) { state.entries.push(e); have.add(e.id); }
+}
+async function loadMonth(m, gen) {
+  const [entries, done] = await Promise.all([
+    store.listEntries(monthStart(m), monthEnd(m)), store.listCompletions(monthStart(m), monthEnd(m))]);
+  if (gen !== cacheGen) return;  // superseded by a newer reload
+  mergeEntries(entries);
+  for (const c of done) state.done.add(doneKey(c.entry_id, c.set_no));
+  state.loadedMonths.add(m);
+}
 async function ensureMonths(months) {
-  const missing = months.filter(m => !state.loadedMonths.has(m));
-  if (!missing.length) return;
-  missing.forEach(m => state.loadedMonths.add(m));
-  // Load each missing month separately so ranges never overlap with what's already loaded.
-  await Promise.all(missing.map(async m => {
-    const [entries, done] = await Promise.all([
-      store.listEntries(monthStart(m), monthEnd(m)), store.listCompletions(monthStart(m), monthEnd(m))]);
-    state.entries.push(...entries);
-    for (const c of done) state.done.add(doneKey(c.entry_id, c.set_no));
-  })).catch(err => { missing.forEach(m => state.loadedMonths.delete(m)); throw err; });
+  const gen = cacheGen;
+  await Promise.all(months.filter(m => !state.loadedMonths.has(m)).map(m => {
+    const key = `${gen}|${m}`;
+    if (!monthLoads.has(key)) monthLoads.set(key, loadMonth(m, gen).finally(() => monthLoads.delete(key)));
+    return monthLoads.get(key);
+  }));
 }
 const ensureAround = m => ensureMonths([shiftMonth(m, -1), m, shiftMonth(m, 1)]);
-function resetCache() { state.entries = []; state.done = new Set(); state.loadedMonths = new Set(); }
+// A day can be changed only once its month's log has loaded; until then it might look "not started"
+// when it actually has been, and touching it would copy the workout into the log a second time.
+const dayReady = ds => state.loadedMonths.has(monthOf(ds));
+function resetCache() { cacheGen++; state.entries = []; state.done = new Set(); state.loadedMonths = new Set(); }
 async function resync() {
   resetCache();
+  render();
   await loadPlans();
   await ensureAround(state.view === 'calendar' ? state.month : monthOf(state.date));
   render();
@@ -544,6 +559,9 @@ function enqueue(fn) {
 // Copy a scheduled workout into the day log (the first time it's touched on that day).
 function materialize(item) {
   if (!item.virtual) return item;
+  const existing = state.entries.find(e => e.date === item.date && e.source_plan_id === item.source_plan_id &&
+    e.source_exercise_id === item.source_exercise_id);
+  if (existing) return existing;
   const p = state.plans.find(x => x.id === item.source_plan_id);
   const rows = p.exercises.map((x, i) => ({
     id: uuid(), date: item.date, source_plan_id: p.id, source_exercise_id: x.id, kind: p.kind, group_title: p.title,
@@ -635,6 +653,7 @@ function dayView() {
   const removed = items.filter(it => it.removed);
   const { total, done } = dayCounts(ds);
   const cards = dayGroups(items).map(dayCard).join('');
+  const ready = dayReady(ds);
 
   const rel = ds === today ? 'Today' : ds === addDays(today, -1) ? 'Yesterday' : ds === addDays(today, 1) ? 'Tomorrow' : '';
   const big = rel || fmt(ds, { weekday: 'long' });
@@ -646,6 +665,7 @@ function dayView() {
       <button type="button" class="icon-btn" data-action="shift-day" data-n="1" aria-label="Next day">›</button>
     </header>
     ${ds !== today ? '<div class="center"><button type="button" class="link-btn" data-action="go-today">Back to today</button></div>' : ''}
+    ${!ready ? '<div class="empty">Loading…</div>' : `
     ${total ? `<div class="progress" aria-label="${done} of ${total} sets done"><span style="width:${Math.round(done / total * 100)}%"></span></div>` : ''}
     ${cards || `<div class="empty"><div class="big">Rest day</div>Nothing scheduled.
       <div class="actions">
@@ -655,7 +675,7 @@ function dayView() {
     ${removed.length ? `<div class="removed"><div class="section-label">Removed from this day</div>
       ${removed.map(it => `<div class="removed-row"><span>${esc(it.name)}</span>
         <button type="button" class="link-btn" data-action="restore" data-id="${it.id}">Restore</button></div>`).join('')}</div>` : ''}
-    ${cards ? '<div class="add-day"><button type="button" class="link-btn" data-action="new-entry">+ Add an exercise to this day</button></div>' : ''}`;
+    ${cards ? '<div class="add-day"><button type="button" class="link-btn" data-action="new-entry">+ Add an exercise to this day</button></div>' : ''}`}`;
 }
 
 function dayMenuView() {
@@ -841,6 +861,7 @@ function syncEditor() {
 }
 
 function saveEntryEditor(e, x) {
+  if (!dayReady(state.date)) return toast('Still loading. Try again in a moment.');
   if (e.isNew) {
     const extras = state.entries.filter(en => en.date === state.date && en.kind === 'extra').length;
     const row = { id: uuid(), date: state.date, source_plan_id: null, source_exercise_id: null, kind: 'extra', group_title: '',
@@ -916,6 +937,8 @@ app.addEventListener('click', ev => {
   if (!el || el.disabled) return;
   const a = el.dataset.action;
   if (a === 'backdrop' && ev.target !== el) return;  // only clicks on the backdrop itself close the sheet
+  const DAY_ACTIONS = ['toggle-set', 'day-menu', 'adjust', 'remove-entry', 'restore', 'edit-entry', 'new-entry'];
+  if (DAY_ACTIONS.includes(a) && !dayReady(state.date)) return;
   switch (a) {
     case 'tab':
       state.view = el.dataset.view;
