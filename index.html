@@ -234,18 +234,22 @@
   }
   .input:focus { border-color: var(--accent); }
   .ex-row {
-    display: grid; grid-template-columns: 112px 1fr 40px; gap: 6px; align-items: center;
+    display: grid; grid-template-columns: 112px 1fr 40px 36px; gap: 6px; align-items: center;
+    grid-template-areas: "name name up del" "sets det down .";
     padding: 10px 0; border-top: 1px solid var(--line);
   }
   .ex-row:first-of-type { border-top: 0; padding-top: 0; }
-  .ex-row .ex-name { grid-column: 1 / 3; }
-  .ex-row .remove { border: 0; background: none; color: var(--muted); font-size: 1.3rem; height: 44px; }
-  .ex-row .ex-details { grid-column: 2 / 4; }
+  .ex-row .ex-name { grid-area: name; }
+  .ex-row .sets-field { grid-area: sets; }
+  .ex-row .ex-details { grid-area: det; }
+  .ex-row .remove { grid-area: del; border: 0; background: none; color: var(--muted); font-size: 1.3rem; height: 44px; }
+  .ex-row .move { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; height: 44px; color: var(--text); font-size: 1rem; }
+  .ex-row .move:disabled { opacity: .3; }
+  .ex-row .move.up { grid-area: up; }
+  .ex-row .move.down { grid-area: down; }
   .sets-field { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: .9rem; }
   .sets-field .input { width: 64px; text-align: center; padding-left: 6px; padding-right: 6px; }
-  .single .ex-row { grid-template-columns: 112px 1fr; }
-  .single .ex-row .ex-name { grid-column: 1 / 3; }
-  .single .ex-row .ex-details { grid-column: 2 / 3; }
+  .single .ex-row { grid-template-columns: 112px 1fr; grid-template-areas: "name name" "sets det"; }
   .seg { display: grid; grid-template-columns: repeat(3, 1fr); background: var(--surface-2); border-radius: 10px; padding: 3px; }
   .seg label { text-align: center; padding: 8px 4px; border-radius: 8px; font-size: .9rem; font-weight: 600; color: var(--muted); }
   .seg input { position: absolute; opacity: 0; pointer-events: none; }
@@ -891,7 +895,9 @@ function editorView() {
   const exRows = e.exercises.map((x, i) => `
     <div class="ex-row" data-ex-id="${x.id}">
       <input class="input ex-name" placeholder="${oneEx ? 'e.g. Squats' : 'Exercise'}" value="${esc(x.name)}" aria-label="Exercise ${i + 1} name">
-      ${oneEx ? '' : `<button type="button" class="remove" data-action="remove-ex" data-i="${i}" aria-label="Remove exercise">×</button>`}
+      ${oneEx ? '' : `<button type="button" class="remove" data-action="remove-ex" data-i="${i}" aria-label="Remove exercise">×</button>
+        <button type="button" class="move up" data-action="move-ex" data-i="${i}" data-dir="-1" aria-label="Move ${esc(x.name || 'exercise')} up" ${i === 0 ? 'disabled' : ''}>↑</button>
+        <button type="button" class="move down" data-action="move-ex" data-i="${i}" data-dir="1" aria-label="Move ${esc(x.name || 'exercise')} down" ${i === e.exercises.length - 1 ? 'disabled' : ''}>↓</button>`}
       <label class="sets-field"><input class="input ex-sets" type="number" inputmode="numeric" min="1" max="50" value="${x.sets}" aria-label="Exercise ${i + 1} sets"> sets</label>
       <input class="input ex-details" placeholder="Per set, e.g. 10 reps @ 40 lb" value="${esc(x.details)}" aria-label="Exercise ${i + 1} details">
     </div>`).join('');
@@ -1104,6 +1110,16 @@ app.addEventListener('click', ev => {
       syncEditor(); state.editing.exercises.push(blankExercise()); render();
       [...document.querySelectorAll('.ex-name')].pop()?.focus();
       return;
+    case 'move-ex': {
+      syncEditor();
+      const list = state.editing.exercises, i = +el.dataset.i, j = i + +el.dataset.dir;
+      if (j < 0 || j >= list.length) return;
+      [list[i], list[j]] = [list[j], list[i]];
+      render();
+      // keep focus on the same button so repeated taps keep moving the same exercise
+      document.querySelector(`.ex-row[data-ex-id="${list[j].id}"] .move.${+el.dataset.dir < 0 ? 'up' : 'down'}:not(:disabled)`)?.focus();
+      return;
+    }
     case 'remove-ex':
       syncEditor(); state.editing.exercises.splice(+el.dataset.i, 1);
       if (!state.editing.exercises.length) state.editing.exercises.push(blankExercise());
