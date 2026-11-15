@@ -161,6 +161,38 @@
   .legend { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; color: var(--muted); font-size: .8rem; margin-top: 12px; }
   .legend span { display: inline-flex; align-items: center; gap: 6px; }
 
+  /* Plan (month overview) */
+  .plan-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
+  .plan-grid .cal-dow { padding-bottom: 4px; }
+  .plan-day {
+    min-height: 78px; border: 0; border-radius: 8px; background: var(--surface); box-shadow: var(--shadow);
+    padding: 4px 3px 5px; text-align: left; display: flex; flex-direction: column; gap: 2px; overflow: hidden; min-width: 0;
+  }
+  .plan-day.other { opacity: .4; }
+  .plan-day.today { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .plan-day .n { font-size: .72rem; font-weight: 700; color: var(--muted); padding: 0 2px 1px; }
+  .plan-day.today .n { color: var(--accent); }
+  .chip {
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+    font-size: .62rem; line-height: 1.2; font-weight: 600; padding: 2px 3px; border-radius: 4px;
+    color: #fff; overflow-wrap: normal; word-break: normal;
+  }
+  .chip.done { opacity: .55; }
+  .chip.done::before { content: "✓ "; }
+  .chip-more { font-size: .64rem; color: var(--muted); padding-left: 3px; }
+  @media (min-width: 520px) { .plan-day { min-height: 92px; padding: 5px; } .chip, .chip-more { font-size: .72rem; } .chip { padding: 2px 5px; } }
+  #app.wide { max-width: 980px; }
+  #app.wide .view { padding-left: 8px; padding-right: 8px; }
+  @media (min-width: 520px) { #app.wide .view { padding-left: 16px; padding-right: 16px; } }
+  .plan-grid { gap: 2px; }
+  @media (min-width: 520px) { .plan-grid { gap: 4px; } }
+  .plan-legend { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); padding: 6px 14px; margin-top: 14px; }
+  .plan-legend-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
+  .plan-legend-row:first-child { border-top: 0; }
+  .plan-legend-row .sw { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+  .plan-legend-row .nm { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .plan-legend-row .ct { color: var(--muted); font-size: .9rem; white-space: nowrap; }
+
   /* Plans list */
   .plan-item {
     width: 100%; text-align: left; border: 0; display: block;
@@ -179,7 +211,7 @@
     background: var(--surface); border-top: 1px solid var(--line);
     padding-bottom: env(safe-area-inset-bottom);
   }
-  .tabs-inner { max-width: 560px; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); }
+  .tabs-inner { max-width: 560px; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); }
   .tab { border: 0; background: none; padding: 9px 0 10px; color: var(--muted); font-size: .78rem; font-weight: 600; display: flex; flex-direction: column; align-items: center; gap: 3px; }
   .tab svg { width: 24px; height: 24px; }
   .tab.active { color: var(--accent); }
@@ -288,7 +320,15 @@ const monthStart = m => `${m}-01`;
 const monthEnd = m => addDays(monthStart(shiftMonth(m, 1)), -1);
 const fmt = (s, opts) => parseDS(s).toLocaleDateString(undefined, opts);
 const DOW_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const DOW_LETTER = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+const DOW_LETTER = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];       // weeks start on Monday
+const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];                        // weekday numbers in display order (0 = Sunday)
+const mondayIndex = ds => (weekday(ds) + 6) % 7;                 // 0 = Monday … 6 = Sunday
+function monthGrid(m) {
+  const first = monthStart(m), last = monthEnd(m);
+  const days = [];
+  for (let ds = addDays(first, -mondayIndex(first)); ds <= addDays(last, 6 - mondayIndex(last)); ds = addDays(ds, 1)) days.push(ds);
+  return days;
+}
 
 /* ───────────── Scheduling ───────────── */
 function occursOn(plan, ds) {
@@ -309,7 +349,7 @@ function scheduleText(p) {
   let t;
   if (p.repeat === 'none') return `One time · ${fmt(p.start_date, { weekday: 'short', month: 'short', day: 'numeric' })}`;
   if (p.repeat === 'weekly') {
-    const days = [...p.weekdays].sort((a, b) => a - b);
+    const days = WEEK_ORDER.filter(d => p.weekdays.includes(d));
     t = days.length === 7 ? 'Every day' : 'Every ' + days.map(d => DOW_SHORT[d]).join(', ');
   } else {
     t = p.interval_days === 1 ? 'Every day' : `Every ${p.interval_days} days`;
@@ -437,6 +477,11 @@ function localStore() {
     async listEntries(from, to) { return structuredClone(db.entries.filter(e => e.date >= from && e.date <= to)); },
     async createEntries(rows) { db.entries.push(...structuredClone(rows)); save(); },
     async updateEntry(id, patch) { Object.assign(db.entries.find(e => e.id === id) || {}, patch); save(); },
+    async deleteEntries(ids) {
+      db.entries = db.entries.filter(e => !ids.includes(e.id));
+      db.completions = db.completions.filter(c => !ids.includes(c.entry_id));
+      save();
+    },
     async listCompletions(from, to) { return db.completions.filter(c => c.date >= from && c.date <= to); },
     async setDone(entry_id, date, set_no, done) {
       db.completions = db.completions.filter(c => !(c.entry_id === entry_id && c.set_no === set_no));
@@ -450,7 +495,7 @@ async function supabaseStore() {
   const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
   const sb = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_KEY);
   const ok = ({ data, error }) => { if (error) throw error; return data; };
-  const ENTRY_COLS = 'id, date, source_plan_id, source_exercise_id, kind, group_title, name, details, planned_sets, sets, position, removed';
+  const ENTRY_COLS = 'id, date, source_plan_id, source_exercise_id, kind, group_title, name, details, planned_sets, sets, position, removed, edited';
   return {
     async getUser() { const { data } = await sb.auth.getSession(); return data.session?.user ?? null; },
     onAuthChange(cb) { sb.auth.onAuthStateChange((_event, session) => setTimeout(() => cb(session?.user ?? null), 0)); },
@@ -475,6 +520,7 @@ async function supabaseStore() {
     },
     async createEntries(rows) { ok(await sb.from('day_entries').insert(rows)); },
     async updateEntry(id, patch) { ok(await sb.from('day_entries').update(patch).eq('id', id)); },
+    async deleteEntries(ids) { ok(await sb.from('day_entries').delete().in('id', ids)); },
     async listCompletions(from, to) {
       return ok(await sb.from('completions').select('entry_id, set_no').gte('date', from).lte('date', to));
     },
@@ -540,9 +586,10 @@ async function resync() {
   resetCache();
   render();
   await loadPlans();
-  await ensureAround(state.view === 'calendar' ? state.month : monthOf(state.date));
+  await ensureAround(isMonthView() ? state.month : monthOf(state.date));
   render();
 }
+const isMonthView = () => state.view === 'calendar' || state.view === 'plan';
 
 /* Writes to the day log go through a queue so they reach the server in order
    (e.g. a day's entries are created before a set on them is checked off). */
@@ -565,7 +612,7 @@ function materialize(item) {
   const p = state.plans.find(x => x.id === item.source_plan_id);
   const rows = p.exercises.map((x, i) => ({
     id: uuid(), date: item.date, source_plan_id: p.id, source_exercise_id: x.id, kind: p.kind, group_title: p.title,
-    name: x.name, details: x.details, planned_sets: x.sets, sets: x.sets, position: i, removed: false,
+    name: x.name, details: x.details, planned_sets: x.sets, sets: x.sets, position: i, removed: false, edited: false,
   }));
   state.entries.push(...rows);
   enqueue(() => store.createEntries(rows));
@@ -575,6 +622,19 @@ function updateEntry(entry, patch) {
   Object.assign(entry, patch);
   enqueue(() => store.updateEntry(entry.id, patch));
 }
+// If a workout's copy for a day is back to exactly how it was copied (no sets checked, no sets
+// added or removed, nothing removed or edited for that day), drop the copy so the day follows
+// the workout definition again. Undoes accidental taps, e.g. on a future day.
+function maybeRelease(ds, planId) {
+  if (!planId || !state.plans.some(p => p.id === planId)) return;  // workout deleted: keep the record
+  const group = state.entries.filter(e => e.date === ds && e.source_plan_id === planId);
+  if (!group.length) return;
+  const ids = new Set(group.map(e => e.id));
+  for (const k of state.done) if (ids.has(k.slice(0, k.indexOf('|')))) return;   // a set is checked
+  if (!group.every(e => !e.removed && !e.edited && e.sets === e.planned_sets)) return;
+  state.entries = state.entries.filter(e => !ids.has(e.id));
+  enqueue(() => store.deleteEntries([...ids]));
+}
 
 /* ───────────── Views ───────────── */
 const app = document.getElementById('app');
@@ -582,18 +642,20 @@ const app = document.getElementById('app');
 const ICONS = {
   day: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/></svg>',
   calendar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
+  plan: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>',
   plans: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>',
 };
 
 function render() {
-  if (!state.user) { app.innerHTML = loginView(); return; }
+  if (!state.user) { app.classList.remove('wide'); app.innerHTML = loginView(); return; }
   const sheetScroll = document.querySelector('.sheet')?.scrollTop || 0;
-  const main = state.view === 'day' ? dayView() : state.view === 'calendar' ? calendarView() : plansView();
+  const main = { day: dayView, calendar: calendarView, plan: planView, plans: plansView }[state.view]();
+  app.classList.toggle('wide', state.view === 'plan');
   app.innerHTML = `
     ${DEMO ? '<div class="banner">Demo mode: data is saved in this browser only. Add your Supabase settings to sync devices.</div>' : ''}
     <main class="view">${main}</main>
     <nav class="tabs"><div class="tabs-inner">
-      ${[['day', 'Tracker'], ['calendar', 'Calendar'], ['plans', 'Workouts']].map(([v, label]) =>
+      ${[['day', 'Tracker'], ['calendar', 'Calendar'], ['plan', 'Plan'], ['plans', 'Workouts']].map(([v, label]) =>
         `<button type="button" class="tab ${state.view === v ? 'active' : ''}" data-action="tab" data-view="${v}">${ICONS[v]}${label}</button>`).join('')}
     </div></nav>
     ${state.editing ? editorView() : state.menu ? dayMenuView() : ''}`;
@@ -707,11 +769,9 @@ function dayMenuView() {
 
 function calendarView() {
   const m = state.month, today = todayDS();
-  const first = monthStart(m), last = monthEnd(m);
-  const gridStart = addDays(first, -weekday(first));
-  const gridEnd = addDays(last, 6 - weekday(last));
+  const first = monthStart(m);
   let cells = '';
-  for (let ds = gridStart; ds <= gridEnd; ds = addDays(ds, 1)) {
+  for (const ds of monthGrid(m)) {
     const cls = ['cal-day', `st-${dayStatus(ds)}`];
     if (monthOf(ds) !== m) cls.push('other');
     if (ds === today) cls.push('today');
@@ -734,6 +794,65 @@ function calendarView() {
       <span class="st-missed"><span class="dot"></span>Missed</span>
       <span class="st-planned"><span class="dot"></span>Planned</span>
     </div>
+    ${monthOf(today) !== m ? '<div class="center" style="margin-top:10px"><button type="button" class="link-btn" data-action="this-month">Back to this month</button></div>' : ''}`;
+}
+
+/* Plan tab: a month at a glance, listing what's scheduled (or logged) on each day. */
+const PLAN_COLORS = ['#2f7fd8', '#e07b22', '#8a56d6', '#17998a', '#d2447a', '#5f8f1c', '#c0504a', '#2aa2c4', '#a67818', '#5866e0'];
+function planColor(planId) {
+  const i = state.plans.findIndex(p => p.id === planId);
+  return i < 0 ? '#8a958f' : PLAN_COLORS[i % PLAN_COLORS.length];   // grey: one-off or deleted
+}
+// Labels for one day: one per workout, one per single / one-off exercise.
+function dayLabels(ds) {
+  const labels = [];
+  for (const g of dayGroups(dayItems(ds))) {
+    if (g.title === 'Exercises' && g.items.every(it => it.kind !== 'workout')) {
+      for (const it of g.items) labels.push({ key: it.source_plan_id || 'extra', text: it.name, color: planColor(it.source_plan_id),
+        done: setsDone(it) === it.sets });
+    } else {
+      const it0 = g.items[0];
+      labels.push({ key: it0.source_plan_id || g.title, text: g.title, color: planColor(it0.source_plan_id),
+        done: g.items.every(it => setsDone(it) === it.sets) });
+    }
+  }
+  return labels;
+}
+function planView() {
+  const m = state.month, today = todayDS();
+  const counts = new Map();
+  let cells = '';
+  for (const ds of monthGrid(m)) {
+    const labels = dayLabels(ds);
+    if (monthOf(ds) === m) for (const l of labels) {
+      const c = counts.get(l.key) || { text: l.key === 'extra' ? 'One-off exercises' : l.text, color: l.color, n: 0 };
+      c.n++; counts.set(l.key, c);
+    }
+    const MAX = 4, shown = labels.length > MAX ? labels.slice(0, MAX - 1) : labels;
+    const cls = ['plan-day'];
+    if (monthOf(ds) !== m) cls.push('other');
+    if (ds === today) cls.push('today');
+    cells += `<button type="button" class="${cls.join(' ')}" data-action="open-day" data-date="${ds}"
+        aria-label="${fmt(ds, { dateStyle: 'full' })}: ${esc(labels.map(l => l.text).join(', ') || 'nothing scheduled')}">
+      <span class="n">${parseDS(ds).getDate()}</span>
+      ${shown.map(l => `<span class="chip ${l.done ? 'done' : ''}" style="background:${l.color}">${esc(l.text)}</span>`).join('')}
+      ${labels.length > shown.length ? `<span class="chip-more">+${labels.length - shown.length} more</span>` : ''}
+    </button>`;
+  }
+  const legend = [...counts.values()].sort((a, b) => b.n - a.n);
+  return `
+    <header class="top">
+      <button type="button" class="icon-btn" data-action="shift-month" data-n="-1" aria-label="Previous month">‹</button>
+      <div class="title"><div class="big">${parseDS(monthStart(m)).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</div></div>
+      <button type="button" class="icon-btn" data-action="shift-month" data-n="1" aria-label="Next month">›</button>
+    </header>
+    <div class="plan-grid">
+      ${DOW_LETTER.map(d => `<div class="cal-dow">${d}</div>`).join('')}${cells}
+    </div>
+    ${legend.length ? `<div class="plan-legend">${legend.map(l => `<div class="plan-legend-row">
+        <span class="sw" style="background:${l.color}"></span><span class="nm">${esc(l.text)}</span>
+        <span class="ct">${l.n} day${l.n === 1 ? '' : 's'}</span></div>`).join('')}</div>`
+      : '<div class="empty">Nothing scheduled this month.</div>'}
     ${monthOf(today) !== m ? '<div class="center" style="margin-top:10px"><button type="button" class="link-btn" data-action="this-month">Back to this month</button></div>' : ''}`;
 }
 
@@ -781,7 +900,7 @@ function editorView() {
     <div class="field"><span class="field-label">Schedule</span>
       <div class="seg">${radio('none', 'One day')}${radio('weekly', 'Weekly')}${radio('interval', 'Every N days')}</div></div>
     ${e.repeat === 'weekly' ? `<div class="field"><span class="field-label">On these days</span><div class="days">
-      ${DOW_SHORT.map((d, i) => `<button type="button" class="day-chip ${e.weekdays.includes(i) ? 'on' : ''}" data-action="toggle-day" data-d="${i}" aria-pressed="${e.weekdays.includes(i)}">${d}</button>`).join('')}
+      ${WEEK_ORDER.map(i => `<button type="button" class="day-chip ${e.weekdays.includes(i) ? 'on' : ''}" data-action="toggle-day" data-d="${i}" aria-pressed="${e.weekdays.includes(i)}">${DOW_SHORT[i]}</button>`).join('')}
       </div></div>` : ''}
     ${e.repeat === 'interval' ? `<div class="field"><label for="f-int">Repeat every</label>
       <div class="row"><input class="input" id="f-int" name="interval_days" type="number" inputmode="numeric" min="1" max="365" value="${e.interval_days || 2}"><span>days</span></div></div>` : ''}
@@ -865,14 +984,16 @@ function saveEntryEditor(e, x) {
   if (e.isNew) {
     const extras = state.entries.filter(en => en.date === state.date && en.kind === 'extra').length;
     const row = { id: uuid(), date: state.date, source_plan_id: null, source_exercise_id: null, kind: 'extra', group_title: '',
-      name: x.name, details: x.details, planned_sets: x.sets, sets: x.sets, position: extras, removed: false };
+      name: x.name, details: x.details, planned_sets: x.sets, sets: x.sets, position: extras, removed: false, edited: false };
     state.entries.push(row);
     enqueue(() => store.createEntries([row]));
   } else {
     const item = findItem(e.itemId);
     if (item) {
       const entry = materialize(item);
-      updateEntry(entry, { name: x.name, details: x.details, sets: x.sets, ...(entry.kind === 'extra' ? { planned_sets: x.sets } : {}) });
+      const edited = entry.edited || x.name !== entry.name || x.details !== entry.details;
+      updateEntry(entry, { name: x.name, details: x.details, sets: x.sets, edited, ...(entry.kind === 'extra' ? { planned_sets: x.sets } : {}) });
+      maybeRelease(entry.date, entry.source_plan_id);
     }
   }
   state.editing = null;
@@ -917,6 +1038,7 @@ function toggleSet(itemId, setNo) {
   const k = doneKey(entry.id, setNo), was = state.done.has(k);
   was ? state.done.delete(k) : state.done.add(k);
   enqueue(() => store.setDone(entry.id, entry.date, setNo, !was));
+  if (was) maybeRelease(entry.date, entry.source_plan_id);
   render();
 }
 function withMenuEntry(fn) {
@@ -942,8 +1064,8 @@ app.addEventListener('click', ev => {
   switch (a) {
     case 'tab':
       state.view = el.dataset.view;
-      if (state.view === 'calendar') state.month = monthOf(state.date);
-      return go(() => ensureAround(state.view === 'calendar' ? state.month : monthOf(state.date)));
+      if (isMonthView()) state.month = monthOf(state.date);
+      return go(() => ensureAround(isMonthView() ? state.month : monthOf(state.date)));
     case 'shift-day':
       state.date = addDays(state.date, +el.dataset.n);
       return go(() => ensureAround(monthOf(state.date)));
@@ -963,13 +1085,13 @@ app.addEventListener('click', ev => {
     case 'day-menu': state.menu = el.dataset.id; return render();
     case 'adjust': {
       const sets = +el.dataset.sets;
-      return withMenuEntry(entry => updateEntry(entry, { sets }));
+      return withMenuEntry(entry => { updateEntry(entry, { sets }); maybeRelease(entry.date, entry.source_plan_id); });
     }
     case 'remove-entry':
       return withMenuEntry(entry => { updateEntry(entry, { removed: true }); toast(`${entry.name} removed from this day`); });
     case 'restore': {
       const entry = state.entries.find(en => en.id === el.dataset.id);
-      if (entry) updateEntry(entry, { removed: false });
+      if (entry) { updateEntry(entry, { removed: false }); maybeRelease(entry.date, entry.source_plan_id); }
       return render();
     }
     case 'edit-entry': return openEntryEditor(findItem(state.menu));
