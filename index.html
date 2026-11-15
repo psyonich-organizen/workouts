@@ -335,15 +335,41 @@ function monthGrid(m) {
 }
 
 /* ───────────── Scheduling ───────────── */
-function occursOn(plan, ds) {
-  if (ds < plan.start_date) return false;
-  if (plan.end_date && ds > plan.end_date) return false;
-  switch (plan.repeat) {
-    case 'none': return ds === plan.start_date;
-    case 'weekly': return plan.weekdays.includes(weekday(ds));
-    case 'interval': return (dayNum(ds) - dayNum(plan.start_date)) % (plan.interval_days || 1) === 0;
+// Does a schedule (start/end date + repeat rule) land on this date?
+function scheduleHits(sc, ds) {
+  if (ds < sc.start_date) return false;
+  if (sc.end_date && ds > sc.end_date) return false;
+  switch (sc.repeat) {
+    case 'none': return ds === sc.start_date;
+    case 'weekly': return sc.weekdays.includes(weekday(ds));
+    case 'interval': return (dayNum(ds) - dayNum(sc.start_date)) % (sc.interval_days || 1) === 0;
     default: return false;
   }
+}
+/* Schedules have a history so that changing one never rewrites the past:
+   the current schedule applies from plan.schedule_from on, and earlier dates use
+   whichever older schedule in plan.schedule_history covered them ({from, until, ...}). */
+function occursOn(plan, ds) {
+  if (plan.schedule_from && ds < plan.schedule_from) {
+    const old = plan.schedule_history.find(h => (!h.from || ds >= h.from) && ds <= h.until);
+    return old ? scheduleHits(old, ds) : false;
+  }
+  return scheduleHits(plan, ds);
+}
+const SCHEDULE_FIELDS = ['start_date', 'repeat', 'weekdays', 'interval_days', 'end_date'];
+// When a saved plan's schedule changes, keep the old schedule for days before today.
+function versionSchedule(old, next) {
+  if (!old) return { schedule_from: null, schedule_history: [] };
+  let from = old.schedule_from || null, history = old.schedule_history || [];
+  const norm = (f, v) => JSON.stringify(f === 'weekdays' ? [...(v || [])].sort() : v ?? null);
+  const changed = SCHEDULE_FIELDS.some(f => norm(f, old[f]) !== norm(f, next[f]));
+  const today = todayDS();
+  if (changed && (from || old.start_date) < today) {   // the old schedule already covered past days
+    const kept = Object.fromEntries(SCHEDULE_FIELDS.map(f => [f, old[f] ?? null]));
+    history = [...history, { ...kept, from, until: addDays(today, -1) }];
+    from = today;
+  }
+  return { schedule_from: from, schedule_history: history };
 }
 const plansOn = ds => state.plans.filter(p => occursOn(p, ds));
 
@@ -436,6 +462,8 @@ function toast(msg) {
 }
 function normalizePlan(p) {
   p.kind = p.kind || 'workout';
+  p.schedule_from = p.schedule_from || null;
+  p.schedule_history = p.schedule_history || [];
   for (const e of p.exercises) { e.sets = e.sets || 1; e.details = e.details ?? ''; }
   return p;
 }
@@ -512,7 +540,8 @@ async function supabaseStore() {
     },
     async savePlan(p) {
       const plan = { id: p.id, kind: p.kind, title: p.title, start_date: p.start_date, repeat: p.repeat,
-        weekdays: p.weekdays, interval_days: p.interval_days, end_date: p.end_date };
+        weekdays: p.weekdays, interval_days: p.interval_days, end_date: p.end_date,
+        schedule_from: p.schedule_from, schedule_history: p.schedule_history };
       ok(await sb.from('plans').upsert(plan));
       const rows = p.exercises.map((e, i) => ({ id: e.id, plan_id: p.id, name: e.name, sets: e.sets, details: e.details, position: i }));
       ok(await sb.from('plan_exercises').delete().eq('plan_id', p.id).not('id', 'in', `(${rows.map(r => r.id).join(',')})`));
@@ -918,7 +947,8 @@ function editorView() {
     </div>` : ''}`;
   const hint = kind === 'entry'
     ? `Only changes ${dayLabel}. Your workouts and other days stay as they are.`
-    : 'Changes apply to upcoming days and days you haven’t started yet. Days you’ve already started keep what you did.';
+    : 'Changes apply to upcoming days and days you haven’t started yet. Days you’ve already started keep what you did.'
+      + (e.isNew ? '' : ' Schedule changes take effect from today; past days keep the schedule they had.');
   return `
     <div class="sheet-backdrop" data-action="backdrop">
       <form class="sheet ${oneEx ? 'single' : ''}" id="editor-form" role="dialog" aria-label="${esc(heading)}">
@@ -1024,6 +1054,7 @@ async function saveEditor() {
     interval_days: e.repeat === 'interval' ? Math.max(1, e.interval_days || 1) : null,
     end_date: end, exercises,
   };
+  Object.assign(plan, versionSchedule(e.isNew ? null : state.plans.find(p => p.id === e.id), plan));
   state.busy = true; render();
   try {
     await writeChain;               // let pending day-log writes finish first
