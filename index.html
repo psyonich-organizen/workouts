@@ -122,7 +122,7 @@
   .removed { margin-top: 6px; }
   .removed-row { display: flex; align-items: center; justify-content: space-between; color: var(--muted); padding: 4px 2px; }
   .removed-row span { text-decoration: line-through; }
-  .add-day { display: flex; gap: 18px; justify-content: center; margin-top: 4px; }
+  .add-day { display: flex; flex-wrap: wrap; gap: 4px 22px; justify-content: center; margin-top: 4px; }
 
   .empty { text-align: center; color: var(--muted); padding: 40px 12px; }
   .empty .big { font-size: 1.1rem; color: var(--text); font-weight: 600; margin-bottom: 4px; }
@@ -576,6 +576,7 @@ const state = {
   month: monthOf(todayDS()),
   editing: null,
   menu: null,           // item id whose day menu is open
+  picker: false,        // "add a workout to this day" sheet open
   busy: false,
 };
 let store;
@@ -642,14 +643,24 @@ function materialize(item) {
   const existing = state.entries.find(e => e.date === item.date && e.source_plan_id === item.source_plan_id &&
     e.source_exercise_id === item.source_exercise_id);
   if (existing) return existing;
-  const p = state.plans.find(x => x.id === item.source_plan_id);
+  const rows = copyPlanToDay(state.plans.find(x => x.id === item.source_plan_id), item.date);
+  return rows.find(r => r.source_exercise_id === item.source_exercise_id);
+}
+function copyPlanToDay(p, ds) {
   const rows = p.exercises.map((x, i) => ({
-    id: uuid(), date: item.date, source_plan_id: p.id, source_exercise_id: x.id, kind: p.kind, group_title: p.title,
+    id: uuid(), date: ds, source_plan_id: p.id, source_exercise_id: x.id, kind: p.kind, group_title: p.title,
     name: x.name, details: x.details, planned_sets: x.sets, sets: x.sets, position: i, removed: false, edited: false,
   }));
   state.entries.push(...rows);
   enqueue(() => store.createEntries(rows));
-  return rows.find(r => r.source_exercise_id === item.source_exercise_id);
+  return rows;
+}
+// Add an existing workout / exercise to one day, outside its regular schedule.
+function addPlanToDay(planId, ds) {
+  const p = state.plans.find(x => x.id === planId);
+  if (!p || dayItems(ds).some(it => it.source_plan_id === planId)) return;
+  copyPlanToDay(p, ds);
+  toast(`${p.title} added to ${fmt(ds, { weekday: 'short', month: 'short', day: 'numeric' })}`);
 }
 function updateEntry(entry, patch) {
   Object.assign(entry, patch);
@@ -659,12 +670,19 @@ function updateEntry(entry, patch) {
 // added or removed, nothing removed or edited for that day), drop the copy so the day follows
 // the workout definition again. Undoes accidental taps, e.g. on a future day.
 function maybeRelease(ds, planId) {
-  if (!planId || !state.plans.some(p => p.id === planId)) return;  // workout deleted: keep the record
+  const plan = state.plans.find(p => p.id === planId);
+  if (!plan) return;                       // workout deleted: keep the record
   const group = state.entries.filter(e => e.date === ds && e.source_plan_id === planId);
   if (!group.length) return;
   const ids = new Set(group.map(e => e.id));
   for (const k of state.done) if (ids.has(k.slice(0, k.indexOf('|')))) return;   // a set is checked
-  if (!group.every(e => !e.removed && !e.edited && e.sets === e.planned_sets)) return;
+  if (occursOn(plan, ds)) {
+    // scheduled on this day: release only if the copy is untouched
+    if (!group.every(e => !e.removed && !e.edited && e.sets === e.planned_sets)) return;
+  } else {
+    // added to this day by hand: drop it only once every exercise has been removed
+    if (!group.every(e => e.removed)) return;
+  }
   state.entries = state.entries.filter(e => !ids.has(e.id));
   enqueue(() => store.deleteEntries([...ids]));
 }
@@ -691,7 +709,7 @@ function render() {
       ${[['day', 'Tracker'], ['calendar', 'Calendar'], ['plan', 'Plan'], ['plans', 'Workouts']].map(([v, label]) =>
         `<button type="button" class="tab ${state.view === v ? 'active' : ''}" data-action="tab" data-view="${v}">${ICONS[v]}${label}</button>`).join('')}
     </div></nav>
-    ${state.editing ? editorView() : state.menu ? dayMenuView() : ''}`;
+    ${state.editing ? editorView() : state.menu ? dayMenuView() : state.picker ? pickerView() : ''}`;
   const sheet = document.querySelector('.sheet');
   if (sheet) sheet.scrollTop = sheetScroll;
 }
@@ -765,12 +783,41 @@ function dayView() {
     ${cards || `<div class="empty"><div class="big">Rest day</div>Nothing scheduled.
       <div class="actions">
         <button type="button" class="btn" data-action="new-entry">Add an exercise</button>
-        <button type="button" class="btn secondary" data-action="new-plan" data-kind="workout" data-date="${ds}">Schedule a workout</button>
+        <button type="button" class="btn secondary" data-action="pick-plan">Add a workout</button>
       </div></div>`}
     ${removed.length ? `<div class="removed"><div class="section-label">Removed from this day</div>
       ${removed.map(it => `<div class="removed-row"><span>${esc(it.name)}</span>
         <button type="button" class="link-btn" data-action="restore" data-id="${it.id}">Restore</button></div>`).join('')}</div>` : ''}
-    ${cards ? '<div class="add-day"><button type="button" class="link-btn" data-action="new-entry">+ Add an exercise to this day</button></div>' : ''}`}`;
+    ${cards ? `<div class="add-day">
+      <button type="button" class="link-btn" data-action="pick-plan">+ Add a workout</button>
+      <button type="button" class="link-btn" data-action="new-entry">+ Add a one-off exercise</button></div>` : ''}`}`;
+}
+
+function pickerView() {
+  const ds = state.date;
+  const onDay = new Set(dayItems(ds).map(it => it.source_plan_id).filter(Boolean));
+  const available = state.plans.filter(p => !onDay.has(p.id));
+  const row = p => {
+    const sub = p.kind === 'single'
+      ? [setsLabel(p.exercises[0].sets), p.exercises[0].details].filter(Boolean).join(' · ')
+      : p.exercises.map(x => x.name).join(', ');
+    return `<button type="button" class="menu-item" data-action="add-plan" data-id="${p.id}">${esc(p.title)}<span class="note">${esc(sub)}</span></button>`;
+  };
+  const workouts = available.filter(p => p.kind !== 'single'), singles = available.filter(p => p.kind === 'single');
+  return `
+    <div class="sheet-backdrop" data-action="backdrop">
+      <div class="sheet menu" role="dialog" aria-label="Add a workout to this day">
+        <div class="menu-title">Add to ${fmt(ds, { weekday: 'long', month: 'short', day: 'numeric' })}</div>
+        <div class="menu-sub">Adds it to this day only. Its regular schedule doesn't change.</div>
+        ${workouts.length ? `<div class="section-label" style="margin-top:8px">Workouts</div><div class="menu-group">${workouts.map(row).join('')}</div>` : ''}
+        ${singles.length ? `<div class="section-label">Single exercises</div><div class="menu-group">${singles.map(row).join('')}</div>` : ''}
+        ${!available.length ? `<div class="menu-sub">${state.plans.length ? 'Everything on your Workouts page is already on this day.' : 'You don\u2019t have any workouts yet.'}</div>` : ''}
+        <div class="menu-group">
+          <button type="button" class="menu-item" data-action="new-plan" data-kind="workout" data-date="${ds}">+ Create a new workout<span class="note">Opens the workout editor</span></button>
+        </div>
+        <button type="button" class="btn secondary block" data-action="close-sheet">Cancel</button>
+      </div>
+    </div>`;
 }
 
 function dayMenuView() {
@@ -791,6 +838,7 @@ function dayMenuView() {
           ${changed ? `<button type="button" class="menu-item" data-action="adjust" data-sets="${it.planned_sets}">Reset to plan<span class="note">${setsLabel(it.planned_sets)}</span></button>` : ''}
           <button type="button" class="menu-item" data-action="edit-entry">Edit for this day<span class="note">Name, sets, details (e.g. the weight you used)</span></button>
           <button type="button" class="menu-item danger" data-action="remove-entry">Remove from this day</button>
+          ${it.kind === 'workout' && plan ? `<button type="button" class="menu-item danger" data-action="remove-group">Remove whole “${esc(it.group_title)}” workout from this day</button>` : ''}
         </div>
         ${plan ? `<div class="menu-group">
           <button type="button" class="menu-item" data-action="edit-plan" data-id="${plan.id}">Edit ${plan.kind === 'single' ? 'this exercise' : `“${esc(plan.title)}”`} for future days</button>
@@ -973,7 +1021,7 @@ function editorView() {
 const blankExercise = () => ({ id: uuid(), name: '', sets: 3, details: '' });
 
 function openEditor(plan, { date, kind } = {}) {
-  state.menu = null;
+  state.menu = null; state.picker = false;
   if (plan) {
     state.editing = { ...structuredClone(plan), isNew: false, has_end: !!plan.end_date };
   } else {
@@ -1096,7 +1144,7 @@ app.addEventListener('click', ev => {
   if (!el || el.disabled) return;
   const a = el.dataset.action;
   if (a === 'backdrop' && ev.target !== el) return;  // only clicks on the backdrop itself close the sheet
-  const DAY_ACTIONS = ['toggle-set', 'day-menu', 'adjust', 'remove-entry', 'restore', 'edit-entry', 'new-entry'];
+  const DAY_ACTIONS = ['toggle-set', 'day-menu', 'adjust', 'remove-entry', 'remove-group', 'restore', 'edit-entry', 'new-entry', 'pick-plan', 'add-plan'];
   if (DAY_ACTIONS.includes(a) && !dayReady(state.date)) return;
   switch (a) {
     case 'tab':
@@ -1125,7 +1173,17 @@ app.addEventListener('click', ev => {
       return withMenuEntry(entry => { updateEntry(entry, { sets }); maybeRelease(entry.date, entry.source_plan_id); });
     }
     case 'remove-entry':
-      return withMenuEntry(entry => { updateEntry(entry, { removed: true }); toast(`${entry.name} removed from this day`); });
+      return withMenuEntry(entry => {
+        updateEntry(entry, { removed: true }); toast(`${entry.name} removed from this day`);
+        maybeRelease(entry.date, entry.source_plan_id);
+      });
+    case 'remove-group':
+      return withMenuEntry(entry => {
+        const group = state.entries.filter(e => e.date === entry.date && e.source_plan_id === entry.source_plan_id && !e.removed);
+        for (const e of group) updateEntry(e, { removed: true });
+        toast(`${entry.group_title} removed from this day`);
+        maybeRelease(entry.date, entry.source_plan_id);
+      });
     case 'restore': {
       const entry = state.entries.find(en => en.id === el.dataset.id);
       if (entry) { updateEntry(entry, { removed: false }); maybeRelease(entry.date, entry.source_plan_id); }
@@ -1135,8 +1193,13 @@ app.addEventListener('click', ev => {
     case 'new-entry': return openEntryEditor(null);
     case 'new-plan': return openEditor(null, { date: el.dataset.date, kind: el.dataset.kind });
     case 'edit-plan': return openEditor(state.plans.find(p => p.id === el.dataset.id));
+    case 'pick-plan': state.picker = true; return render();
+    case 'add-plan':
+      state.picker = false;
+      addPlanToDay(el.dataset.id, state.date);
+      return render();
     case 'close-sheet': case 'backdrop':
-      state.editing = null; state.menu = null; return render();
+      state.editing = null; state.menu = null; state.picker = false; return render();
     case 'add-ex':
       syncEditor(); state.editing.exercises.push(blankExercise()); render();
       [...document.querySelectorAll('.ex-name')].pop()?.focus();
@@ -1183,7 +1246,7 @@ app.addEventListener('submit', ev => {
 });
 
 document.addEventListener('keydown', ev => {
-  if (ev.key === 'Escape' && (state.editing || state.menu)) { state.editing = null; state.menu = null; render(); }
+  if (ev.key === 'Escape' && (state.editing || state.menu || state.picker)) { state.editing = null; state.menu = null; state.picker = false; render(); }
 });
 
 /* ───────────── Auth flow ───────────── */
@@ -1218,7 +1281,7 @@ async function signIn(form) {
 let wasToday = true;
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') { wasToday = state.date === todayDS(); return; }
-  if (!state.user || state.editing || state.menu) return;
+  if (!state.user || state.editing || state.menu || state.picker) return;
   if (wasToday) state.date = todayDS();
   go(async () => { await writeChain; await resync(); });
 });
